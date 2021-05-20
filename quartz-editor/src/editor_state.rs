@@ -102,15 +102,21 @@ impl EditorState {
         Ok(())
     }
 
-    pub fn load(&mut self, render_resource: &RenderResource) {
-        let mut state = GameState::load(
-            &self.project.path.join("target/release/testproject.dll"),
-            render_resource,
-        );
+    pub fn load(&mut self, render_resource: &mut RenderResource) {
+        if let Some(render_texture) = self.egui_textures.get(&0) {
+            render_resource.target_texture(render_texture);
 
-        state.state.init(render_resource);
+            let mut state = GameState::load(
+                &self.project.path.join("target/release/testproject.dll"),
+                render_resource,
+            );
 
-        self.game = Some(state);
+            state.state.init(render_resource);
+
+            render_resource.target_swapchain();
+
+            self.game = Some(state);
+        }
     }
 
     pub fn ui(&mut self, render_resource: &mut RenderResource) {
@@ -172,15 +178,21 @@ impl EditorState {
         if let Some(game) = &mut self.game {
             if let Some(selected_node) = game.selected_node {
                 if let Some(mut node) = game.state.tree.get_node(&selected_node) {
-                    SidePanel::left("inspector_panel", 200.0).show(&self.egui_ctx, |ui| {
-                        node.inspector_ui(
-                            &game.state.plugins,
-                            &selected_node,
-                            &mut game.state.tree,
-                            render_resource,
-                            ui,
-                        );
-                    });
+                    if let Some(render_texture) = self.egui_textures.get(&0) {
+                        SidePanel::left("inspector_panel", 200.0).show(&self.egui_ctx, |ui| {
+                            render_resource.target_texture(render_texture);
+
+                            node.inspector_ui(
+                                &game.state.plugins,
+                                &selected_node,
+                                &mut game.state.tree,
+                                render_resource,
+                                ui,
+                            );
+
+                            render_resource.target_swapchain();
+                        });
+                    }
                 }
             }
         }
@@ -247,7 +259,13 @@ impl quartz_render::framework::State for EditorState {
         }
 
         if let Some(game) = &mut self.game {
-            game.state.update(ctx.render_resource);
+            if let Some(render_texture) = self.egui_textures.get(&0) {
+                ctx.render_resource.target_texture(render_texture);
+
+                game.state.update(ctx.render_resource);
+
+                ctx.render_resource.target_swapchain();
+            }
         }
 
         self.project.update_files().unwrap();
@@ -428,7 +446,7 @@ impl quartz_render::framework::State for EditorState {
                             color.r() as f32 / 255.0,
                             color.g() as f32 / 255.0,
                             color.b() as f32 / 255.0,
-                            color.a() as f32 / 255.0,
+                            color.a() as f32 / 255.0 * 2.0,
                         );
                     }
                 }
@@ -477,7 +495,7 @@ impl quartz_render::framework::State for EditorState {
                             vertex.color.r() as f32 / 255.0,
                             vertex.color.g() as f32 / 255.0,
                             vertex.color.b() as f32 / 255.0,
-                            vertex.color.a() as f32 / 255.0,
+                            vertex.color.a() as f32 / 255.0 * 2.0,
                         ));
                     }
 
