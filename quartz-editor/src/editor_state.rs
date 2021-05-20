@@ -40,6 +40,7 @@ pub struct EditorState {
     egui_textures: HashMap<u64, Texture2d>,
     game: Option<GameState>,
     project: Project,
+    building: Option<std::process::Child>,
 }
 
 impl EditorState {
@@ -82,30 +83,45 @@ impl EditorState {
             egui_textures,
             game: None,
             project: Project::new("../testproject").unwrap(),
+            building: None,
         }
     }
 
-    pub fn build(&self, render_resource: &RenderResource) -> std::io::Result<GameState> {
-        std::process::Command::new("cargo")
+    pub fn build(&mut self) -> std::io::Result<()> {
+        log::info!("Building project");
+
+        let child = std::process::Command::new("cargo")
             .arg("build")
+            .arg("--release")
             .arg("--manifest-path")
             .arg(&self.project.path.join("Cargo.toml"))
-            .output()?;
+            .spawn()?;
 
-        Ok(GameState::load(
-            &self.project.path.join("target/debug/testproject.dll"),
+        self.building = Some(child);
+
+        Ok(())
+    }
+
+    pub fn load(&mut self, render_resource: &RenderResource) {
+        let mut state = GameState::load(
+            &self.project.path.join("target/release/testproject.dll"),
             render_resource,
-        ))
+        );
+
+        state.state.init(render_resource);
+
+        self.game = Some(state);
     }
 
     pub fn ui(&mut self, render_resource: &mut RenderResource) {
         let game = &mut self.game;
+        let building = &self.building;
         let build = TopPanel::top("top_panel")
             .show(&self.egui_ctx, |ui| {
                 ui.horizontal(|ui| {
                     let file_response = ui.button("File");
 
-                    let build_response = ui.button("Build");
+                    let build_response = ui.add(Button::new("Build").enabled(building.is_none()));
 
                     if ui.button("Stop").clicked() {
                         *game = None;
@@ -120,21 +136,27 @@ impl EditorState {
         if build {
             drop(self.game.take());
 
-            let mut state = self.build(render_resource).unwrap();
-            state.state.init(render_resource);
-
-            self.game = Some(state);
+            self.build().unwrap();
         }
 
         let files = &mut self.project.files;
         let game = &mut self.game;
 
         SidePanel::left("file_panel", 200.0).show(&self.egui_ctx, |ui| {
+            ui.separator();
+
+            let available_size = ui.available_size();
+
             if let Some(game) = game {
-                ScrollArea::auto_sized()
+                ScrollArea::from_max_height(available_size.y / 2.0)
                     .id_source("nodes_scroll_area")
                     .show(ui, |ui| {
-                        game.state.tree.nodes_ui(ui, &mut game.selected_node);
+                        game.state.tree.nodes_ui(
+                            ui,
+                            &game.state.components,
+                            &game.state.plugins,
+                            &mut game.selected_node,
+                        );
                     });
 
                 ui.separator();
@@ -147,11 +169,17 @@ impl EditorState {
                 });
         });
 
-        if let Some(game) = &self.game {
-            if let Some(selected_node) = &game.selected_node {
-                if let Some(mut node) = game.state.tree.get_node(selected_node) {
+        if let Some(game) = &mut self.game {
+            if let Some(selected_node) = game.selected_node {
+                if let Some(mut node) = game.state.tree.get_node(&selected_node) {
                     SidePanel::left("inspector_panel", 200.0).show(&self.egui_ctx, |ui| {
-                        node.inspector_ui(render_resource, ui);
+                        node.inspector_ui(
+                            &game.state.plugins,
+                            &selected_node,
+                            &mut game.state.tree,
+                            render_resource,
+                            ui,
+                        );
                     });
                 }
             }
@@ -188,15 +216,38 @@ impl EditorState {
 }
 
 impl quartz_render::framework::State for EditorState {
-    fn update(&mut self, ctx: UpdateCtx<'_>) -> Trans {
+    fn update(&mut self, ctx: quartz_render::framework::UpdateCtx<'_>) -> Trans {
         let size = ctx.window.size();
         let size = egui::Vec2::new(size.x, size.y);
         self.egui_raw_input.screen_rect = Some(Rect::from_min_size(Default::default(), size));
         self.egui_raw_input.predicted_dt = ctx.delta_time;
         self.egui_point_pos = Some(ctx.mouse.position);
 
+        if let Some(building) = &mut self.building {
+            let exit_status = building.try_wait().unwrap();
+
+            if let Some(exit_status) = exit_status {
+                if exit_status.success() {
+                    log::info!("Build finished successfully!");
+                    log::info!("Loading build");
+
+                    self.load(ctx.render_resource);
+
+                    log::info!("Build loaded!");
+                } else {
+                    log::error!("Build failed!");
+
+                    if let Some(stdout) = building.stdout.take() {
+                        log::error!("{:?}", stdout);
+                    }
+                }
+
+                self.building = None;
+            }
+        }
+
         if let Some(game) = &mut self.game {
-            game.state.update();
+            game.state.update(ctx.render_resource);
         }
 
         self.project.update_files().unwrap();

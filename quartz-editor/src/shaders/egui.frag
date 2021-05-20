@@ -9,5 +9,6 @@ layout(set = 1, binding = 0) uniform texture2D tex;
 layout(set = 1, binding = 1) uniform sampler tex_sampler;
 
 void main() {
-    out_color = v_color * texture(sampler2D(tex, tex_sampler), v_uv);
+    vec4 color = v_color * texture(sampler2D(tex, tex_sampler), v_uv);
+    out_color = color;
 }

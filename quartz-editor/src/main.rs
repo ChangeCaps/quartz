@@ -4,9 +4,13 @@ mod project;
 use quartz_render::framework::App;
 
 fn main() {
-    simple_logger::SimpleLogger::from_env().init().unwrap();
+    simple_logger::SimpleLogger::new()
+        .with_level(log::LevelFilter::Warn)
+        .with_module_level("quartz_editor", log::LevelFilter::Info)
+        .init()
+        .unwrap();
 
-    log::debug!("Starting editor");
+    log::info!("Starting editor");
 
     App::new()
         .title("Quartz Editor")

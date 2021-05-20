@@ -1,30 +1,37 @@
+use crate::plugin::*;
 use crate::render::prelude::*;
 use crate::state::*;
 use crate::tree::*;
 
 pub struct GameState {
     pub tree: Tree,
-    pub state: Box<dyn State>,
+    pub plugins: Plugins,
+    pub components: Components,
 }
 
 impl GameState {
-    pub fn new(state: impl State, _render_pipeline: &RenderPipeline) -> Self {
+    pub fn new(
+        tree: Tree,
+        plugins: Plugins,
+        components: Components,
+        _render_resource: &RenderResource,
+    ) -> Self {
         Self {
-            tree: Tree::new(),
-            state: Box::new(state),
+            tree,
+            plugins,
+            components,
         }
     }
 
-    pub fn init(&mut self, render_resource: &RenderResource) {
-        let ctx = InitCtx {
-            tree: &mut self.tree,
-            render_resource: render_resource,
-        };
+    pub fn init(&mut self, _render_resource: &RenderResource) {}
 
-        self.state.init(ctx);
+    pub fn update(&mut self, render_resource: &RenderResource) {
+        self.tree.update(&self.plugins, render_resource);
+
+        for node in std::mem::replace(&mut self.tree.despawn, Vec::new()) {
+            self.tree.remove_recursive(node);
+        }
     }
-
-    pub fn update(&mut self) {}
 
     pub fn render(&mut self, render_resource: &RenderResource) {
         render_resource
@@ -32,7 +39,8 @@ impl GameState {
                 let desc = Default::default();
                 let mut render_pass = render_ctx.render_pass_empty(&desc);
 
-                self.tree.render(render_resource, &mut render_pass);
+                self.tree
+                    .render(&self.plugins, render_resource, &mut render_pass);
             })
             .unwrap();
     }

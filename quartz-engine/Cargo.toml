@@ -7,6 +7,6 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-quartz-render = { git = "https://github.com/ChangeCaps/quartz-render" }
+quartz-render = { path = "../quartz-render" }
 egui = "0.12"
 libloading = "0.7"

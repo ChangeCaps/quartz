@@ -23,7 +23,10 @@ impl Bridge {
 
 #[macro_export]
 macro_rules! bridge {
-    ($new:path) => {
+    {
+        components: { $( $component:path ),+ $(,)? }
+        plugins: { $( $plugin:path ),+ $(,)? }
+    } => {
         mod new {
             use super::*;
 
@@ -31,8 +34,25 @@ macro_rules! bridge {
             pub fn new(
                 render_resource: &quartz_engine::render::prelude::RenderResource,
             ) -> quartz_engine::game_state::GameState {
-                let state = $new(render_resource);
-                quartz_engine::game_state::GameState::new(state, render_resource)
+                let mut components = quartz_engine::state::Components::new();
+                let mut plugins = quartz_engine::plugin::Plugins::new();
+                let mut tree = quartz_engine::prelude::Tree::new();
+
+                $(
+                    components.register_component::<$component>();
+                )+
+
+
+                $(
+                    let init_ctx = quartz_engine::prelude::InitCtx {
+                        tree: &mut tree,
+                        render_resource,
+                    };
+
+                    plugins.register_plugin::<$plugin>(init_ctx);
+                )+
+
+                quartz_engine::game_state::GameState::new(tree, plugins, components, render_resource)
             }
         }
     };
