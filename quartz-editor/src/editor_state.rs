@@ -1,7 +1,7 @@
 use crate::project::*;
 use egui::Key;
 use egui::*;
-use quartz_engine::prelude::*;
+use quartz_engine::{editor_bridge::*, prelude::*};
 use quartz_render::{
     framework::*,
     prelude::{Vec2, *},
@@ -27,20 +27,35 @@ impl GameState {
             bridge,
         }
     }
+
+    pub fn deserialize<'de, D: quartz_engine::serde::Deserializer<'de>>(
+        deserializer: D,
+        path: impl AsRef<Path>,
+        render_resource: &RenderResource,
+    ) -> Self {
+        let bridge = unsafe { Bridge::load(path.as_ref()) }.unwrap();
+        let state = bridge.deserialize(deserializer, render_resource).unwrap();
+
+        Self {
+            state,
+            selected_node: None,
+            bridge,
+        }
+    }
 }
 
 pub struct EditorState {
-    egui_pipeline: RenderPipeline,
-    egui_ctx: CtxRef,
-    egui_raw_input: RawInput,
-    egui_texture_version: Option<u64>,
-    egui_texture: Texture2d,
-    egui_sampler: Sampler,
-    egui_point_pos: Option<Vec2>,
-    egui_textures: HashMap<u64, Texture2d>,
-    game: Option<GameState>,
-    project: Project,
-    building: Option<std::process::Child>,
+    pub egui_pipeline: RenderPipeline,
+    pub egui_ctx: CtxRef,
+    pub egui_raw_input: RawInput,
+    pub egui_texture_version: Option<u64>,
+    pub egui_texture: Texture2d,
+    pub egui_sampler: Sampler,
+    pub egui_point_pos: Option<Vec2>,
+    pub egui_textures: HashMap<u64, Texture2d>,
+    pub game: Option<GameState>,
+    pub project: Project,
+    pub building: Option<std::process::Child>,
 }
 
 impl EditorState {
@@ -102,128 +117,43 @@ impl EditorState {
         Ok(())
     }
 
+    pub fn save_scene(&self) {
+        if let Some(game) = &self.game {
+            if let Ok(file) = std::fs::File::create(self.project.path.join("scene.scn")) {
+                let mut serializer =
+                    ron::Serializer::new(file, Some(Default::default()), true).unwrap();
+
+                game.state.serialize_tree(&mut serializer).unwrap();
+            }
+        }
+    }
+
     pub fn load(&mut self, render_resource: &mut RenderResource) {
         if let Some(render_texture) = self.egui_textures.get(&0) {
             render_resource.target_texture(render_texture);
 
-            let mut state = GameState::load(
-                &self.project.path.join("target/release/testproject.dll"),
-                render_resource,
-            );
+            let mut state =
+                if let Ok(string) = std::fs::read_to_string(self.project.path.join("scene.scn")) {
+                    let mut deserializer = ron::Deserializer::from_str(&string).unwrap();
 
-            state.state.init(render_resource);
+                    GameState::deserialize(
+                        &mut deserializer,
+                        &self.project.path.join("target/release/testproject.dll"),
+                        render_resource,
+                    )
+                } else {
+                    GameState::load(
+                        &self.project.path.join("target/release/testproject.dll"),
+                        render_resource,
+                    )
+                };
+
+            state.state.start(render_resource);
 
             render_resource.target_swapchain();
 
             self.game = Some(state);
         }
-    }
-
-    pub fn ui(&mut self, render_resource: &mut RenderResource) {
-        let game = &mut self.game;
-        let building = &self.building;
-        let build = TopPanel::top("top_panel")
-            .show(&self.egui_ctx, |ui| {
-                ui.horizontal(|ui| {
-                    let file_response = ui.button("File");
-
-                    let build_response = ui.add(Button::new("Build").enabled(building.is_none()));
-
-                    if ui.button("Stop").clicked() {
-                        *game = None;
-                    }
-
-                    build_response.clicked()
-                })
-                .inner
-            })
-            .inner;
-
-        if build {
-            drop(self.game.take());
-
-            self.build().unwrap();
-        }
-
-        let files = &mut self.project.files;
-        let game = &mut self.game;
-
-        SidePanel::left("file_panel", 200.0).show(&self.egui_ctx, |ui| {
-            ui.separator();
-
-            let available_size = ui.available_size();
-
-            if let Some(game) = game {
-                ScrollArea::from_max_height(available_size.y / 2.0)
-                    .id_source("nodes_scroll_area")
-                    .show(ui, |ui| {
-                        game.state.tree.nodes_ui(
-                            ui,
-                            &game.state.components,
-                            &game.state.plugins,
-                            &mut game.selected_node,
-                        );
-                    });
-
-                ui.separator();
-            }
-
-            ScrollArea::auto_sized()
-                .id_source("file_scroll_area")
-                .show(ui, |ui| {
-                    files.ui(ui);
-                });
-        });
-
-        if let Some(game) = &mut self.game {
-            if let Some(selected_node) = game.selected_node {
-                if let Some(mut node) = game.state.tree.get_node(&selected_node) {
-                    if let Some(render_texture) = self.egui_textures.get(&0) {
-                        SidePanel::left("inspector_panel", 200.0).show(&self.egui_ctx, |ui| {
-                            render_resource.target_texture(render_texture);
-
-                            node.inspector_ui(
-                                &game.state.plugins,
-                                &selected_node,
-                                &mut game.state.tree,
-                                render_resource,
-                                ui,
-                            );
-
-                            render_resource.target_swapchain();
-                        });
-                    }
-                }
-            }
-        }
-
-        let textures = &mut self.egui_textures;
-        let game = &mut self.game;
-
-        CentralPanel::default().show(&self.egui_ctx, |ui| {
-            if game.is_some() {
-                if let Some(render_texture) = textures.get_mut(&0) {
-                    let view_port_size = ui.available_size();
-
-                    ui.add(widgets::Image::new(TextureId::User(0), view_port_size));
-
-                    let view_port_width = view_port_size.x.floor() as u32;
-                    let view_port_height = view_port_size.y.floor() as u32;
-
-                    if view_port_width != render_texture.dimensions.width
-                        || view_port_height != render_texture.dimensions.height
-                    {
-                        *render_texture = Texture2d::new(
-                            &TextureDescriptor::default_settings(D2::new(
-                                view_port_width,
-                                view_port_height,
-                            )),
-                            render_resource,
-                        );
-                    }
-                }
-            }
-        });
     }
 }
 

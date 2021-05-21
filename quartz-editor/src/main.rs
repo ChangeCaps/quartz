@@ -1,5 +1,6 @@
 mod editor_state;
 mod project;
+mod ui;
 
 use quartz_render::framework::App;
 

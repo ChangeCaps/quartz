@@ -1,14 +1,9 @@
 use crate::component::*;
 use crate::node::*;
 use crate::plugin::*;
-use crate::state::Components;
-use egui::*;
 use quartz_render::prelude::*;
 use std::collections::{HashMap, HashSet};
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc, Mutex,
-};
+use std::sync::{Arc, Mutex};
 
 pub struct Tree {
     pub(crate) nodes: HashMap<NodeId, NodeContainer>,
@@ -103,70 +98,28 @@ impl Tree {
         self.parents.get(&child).cloned()
     }
 
-    pub fn nodes_ui(
-        &mut self,
-        ui: &mut Ui,
-        components: &Components,
-        plugins: &Plugins,
-        selected_node: &mut Option<NodeId>,
-    ) {
-        for id in self.base.clone() {
-            self.node_ui(&id, components, plugins, ui, selected_node);
+    pub fn get_node<'a>(&self, node_id: &NodeId) -> Option<NodeGuard<'a>> {
+        if let Some(container) = self.nodes.get(node_id) {
+            container.guard()
+        } else {
+            None
         }
     }
+}
 
-    pub fn node_ui(
+#[cfg(feature = "editor_bridge")]
+impl Tree {
+    pub(crate) fn despawn_recursive(
         &mut self,
         node_id: &NodeId,
-        components: &Components,
         plugins: &Plugins,
-        ui: &mut Ui,
-        selected_node: &mut Option<NodeId>,
+        render_resource: &RenderResource,
     ) {
-        if let Some(node) = self.get_node(node_id) {
-            let selected = *selected_node == Some(*node_id);
+        if let Some(mut node) = self.get_node(node_id) {
+            node.despawn(plugins, node_id, self, render_resource);
 
-            let children = self.get_children(*node_id).clone();
-
-            let response = if !children.is_empty() {
-                let response =
-                    CollapsingHeader::new(&node.name)
-                        .id_source(node_id)
-                        .show(ui, |ui| {
-                            for child in children {
-                                self.node_ui(&child, components, plugins, ui, selected_node);
-                            }
-                        });
-
-                response.header_response
-            } else {
-                ui.add(Button::new(&node.name))
-            };
-
-            if response.double_clicked() {
-                *selected_node = Some(*node_id);
-            }
-
-            let popup_id = ui.make_persistent_id("add_component_id");
-
-            if ui.input().key_pressed(Key::A) && ui.input().modifiers.ctrl && selected {
-                ui.memory().toggle_popup(popup_id);
-            }
-
-            if selected {
-                popup::popup_below_widget(ui, popup_id, &response, |ui| {
-                    ui.set_max_width(200.0);
-
-                    ScrollArea::from_max_height(300.0).show(ui, |ui| {
-                        for component in components.components() {
-                            if ui.button(component).clicked() {
-                                let component = components.init(component, plugins).unwrap();
-
-                                self.spawn_child(component, &selected_node.unwrap());
-                            }
-                        }
-                    });
-                });
+            for child in self.get_children(*node_id).clone() {
+                self.despawn_recursive(&child, plugins, render_resource);
             }
         }
     }
@@ -203,7 +156,7 @@ impl Tree {
         &mut self,
         plugins: &Plugins,
         render_resource: &RenderResource,
-        render_pass: &mut EmptyRenderPass<'_, '_, format::Rgba8UnormSrgb, format::Depth32Float>,
+        render_pass: &mut EmptyRenderPass<'_, '_, format::TargetFormat, format::Depth32Float>,
     ) {
         for id in self.nodes.keys().cloned().collect::<Vec<_>>() {
             if let Some(mut node) = self.get_node(&id) {
@@ -211,18 +164,10 @@ impl Tree {
             }
         }
     }
-
-    pub fn get_node<'a>(&self, node_id: &NodeId) -> Option<NodeGuard<'a>> {
-        if let Some(container) = self.nodes.get(node_id) {
-            container.guard()
-        } else {
-            None
-        }
-    }
 }
 
 pub struct NodeContainer {
-    node: Arc<Mutex<Option<Node>>>,
+    pub(crate) node: Arc<Mutex<Option<Node>>>,
 }
 
 impl NodeContainer {

@@ -1,6 +1,10 @@
+use crate::component::*;
 use crate::game_state::*;
+use crate::plugin::*;
+use crate::tree::*;
 use libloading::*;
 use quartz_render::prelude::*;
+use serde::{de::DeserializeSeed, Deserializer};
 
 pub struct Bridge {
     lib: Library,
@@ -14,46 +18,33 @@ impl Bridge {
     }
 
     pub fn new(&self, render_resource: &RenderResource) -> Result<GameState, Error> {
-        let new: Symbol<fn(render_resource: &RenderResource) -> GameState> =
+        let new: Symbol<fn(&RenderResource) -> (Components, Plugins)> =
             unsafe { self.lib.get(b"new") }?;
 
-        Ok(new(render_resource))
+        let (components, plugins) = new(render_resource);
+
+        let tree = Tree::new();
+
+        Ok(GameState::new(tree, plugins, components, render_resource))
     }
-}
 
-#[macro_export]
-macro_rules! bridge {
-    {
-        components: { $( $component:path ),+ $(,)? }
-        plugins: { $( $plugin:path ),+ $(,)? }
-    } => {
-        mod new {
-            use super::*;
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        &self,
+        deserializer: D,
+        render_resource: &RenderResource,
+    ) -> Result<GameState, Error> {
+        let new: Symbol<fn(&RenderResource) -> (Components, Plugins)> =
+            unsafe { self.lib.get(b"new") }?;
 
-            #[no_mangle]
-            pub fn new(
-                render_resource: &quartz_engine::render::prelude::RenderResource,
-            ) -> quartz_engine::game_state::GameState {
-                let mut components = quartz_engine::state::Components::new();
-                let mut plugins = quartz_engine::plugin::Plugins::new();
-                let mut tree = quartz_engine::prelude::Tree::new();
+        let (components, plugins) = new(render_resource);
 
-                $(
-                    components.register_component::<$component>();
-                )+
-
-
-                $(
-                    let init_ctx = quartz_engine::prelude::InitCtx {
-                        tree: &mut tree,
-                        render_resource,
-                    };
-
-                    plugins.register_plugin::<$plugin>(init_ctx);
-                )+
-
-                quartz_engine::game_state::GameState::new(tree, plugins, components, render_resource)
-            }
+        let tree = crate::reflect::serde::TreeDeserializer {
+            components: &components,
+            plugins: &plugins,
         }
-    };
+        .deserialize(deserializer)
+        .unwrap();
+
+        Ok(GameState::new(tree, plugins, components, render_resource))
+    }
 }

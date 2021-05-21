@@ -1,15 +1,15 @@
 [package]
-name = "testproject"
+name = "quartz-engine-derive"
 version = "0.1.0"
 authors = ["= <hjalte.nannestad@gmail.com>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[workspace]
+[lib]
+proc-macro = true
 
 [dependencies]
-quartz-engine = { path = "../quartz-engine" }
-
-[lib]
-crate-type = ["cdylib"]
+proc-macro2 = "1.0"
+quote = "1.0"
+syn = "1.0"

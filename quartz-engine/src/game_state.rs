@@ -1,7 +1,8 @@
+use crate::component::*;
 use crate::plugin::*;
 use crate::render::prelude::*;
-use crate::state::*;
 use crate::tree::*;
+use serde::Serialize;
 
 pub struct GameState {
     pub tree: Tree,
@@ -23,13 +24,34 @@ impl GameState {
         }
     }
 
-    pub fn init(&mut self, _render_resource: &RenderResource) {}
+    pub fn start(&mut self, render_resource: &RenderResource) {
+        let plugin_ctx = PluginCtx {
+            tree: &mut self.tree,
+            render_resource,
+        };
+
+        self.plugins.start(plugin_ctx);
+    }
 
     pub fn update(&mut self, render_resource: &RenderResource) {
+        let plugin_ctx = PluginCtx {
+            tree: &mut self.tree,
+            render_resource,
+        };
+
+        self.plugins.update(plugin_ctx);
+
         self.tree.update(&self.plugins, render_resource);
 
-        for node in std::mem::replace(&mut self.tree.despawn, Vec::new()) {
-            self.tree.remove_recursive(node);
+        let nodes = std::mem::replace(&mut self.tree.despawn, Vec::new());
+
+        for node_id in &nodes {
+            self.tree
+                .despawn_recursive(node_id, &self.plugins, render_resource);
+        }
+
+        for node_id in nodes {
+            self.tree.remove_recursive(node_id);
         }
     }
 
@@ -43,5 +65,9 @@ impl GameState {
                     .render(&self.plugins, render_resource, &mut render_pass);
             })
             .unwrap();
+    }
+
+    pub fn serialize_tree<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.tree.serialize(serializer)
     }
 }

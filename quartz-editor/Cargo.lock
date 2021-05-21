@@ -47,6 +47,9 @@ name = "arrayvec"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23b62fc65de8e4e7f52534fb52b0f3ed04746ae267519eef2a83941e8085068b"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "ash"
@@ -564,6 +567,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "erased-serde"
+version = "0.3.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0465971a8cc1fa2455c8465aaa377131e1f1cf4983280f474a13e68793aa770c"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "fixedbitset"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -868,6 +880,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3abb554f8ee44336b72d522e0a7fe86a29e09f839a36022fa869a7dfe941a54b"
 dependencies = [
  "bytemuck",
+ "serde",
 ]
 
 [[package]]
@@ -1492,8 +1505,20 @@ name = "quartz-engine"
 version = "0.1.0"
 dependencies = [
  "egui",
+ "erased-serde",
  "libloading 0.7.0",
+ "quartz-engine-derive",
  "quartz-render",
+ "serde",
+]
+
+[[package]]
+name = "quartz-engine-derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -1505,6 +1530,7 @@ dependencies = [
  "futures",
  "glam",
  "log",
+ "serde",
  "shaderc",
  "spirv-reflect",
  "wgpu",
@@ -2076,6 +2102,7 @@ dependencies = [
  "naga",
  "parking_lot",
  "raw-window-handle",
+ "serde",
  "smallvec",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -2109,6 +2136,8 @@ dependencies = [
  "parking_lot",
  "profiling",
  "raw-window-handle",
+ "ron",
+ "serde",
  "smallvec",
  "thiserror",
  "wgpu-types",
@@ -2121,6 +2150,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aa248d90c8e6832269b8955bf800e8241f942c25e18a235b7752226804d21556"
 dependencies = [
  "bitflags",
+ "serde",
 ]
 
 [[package]]

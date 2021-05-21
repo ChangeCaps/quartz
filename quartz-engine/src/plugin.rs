@@ -1,3 +1,4 @@
+use crate::component::*;
 use crate::tree::*;
 use quartz_render::prelude::*;
 use std::any::{Any, TypeId};
@@ -16,6 +17,10 @@ impl PluginContainer {
             taken: AtomicBool::new(false),
             plugin: UnsafeCell::new(plugin),
         }
+    }
+
+    pub fn get_mut(&mut self) -> &mut dyn Plugin {
+        self.plugin.get_mut().as_mut()
     }
 
     pub fn get(&self) -> Option<&dyn Plugin> {
@@ -53,7 +58,33 @@ impl Plugins {
         }
     }
 
-    pub fn register_plugin<P: Plugin>(&mut self, init_ctx: InitCtx) {
+    pub fn start(&mut self, ctx: PluginCtx) {
+        for plugin in self.plugins.values_mut() {
+            let ctx = PluginCtx {
+                tree: ctx.tree,
+                render_resource: ctx.render_resource,
+            };
+
+            plugin.get_mut().start(ctx);
+        }
+    }
+
+    pub fn update(&mut self, ctx: PluginCtx) {
+        for plugin in self.plugins.values_mut() {
+            let ctx = PluginCtx {
+                tree: ctx.tree,
+                render_resource: ctx.render_resource,
+            };
+
+            plugin.get_mut().update(ctx);
+        }
+    }
+
+    pub fn init<C: InitComponent>(&self) -> C {
+        C::Plugins::fetch(self, |plugins| C::init(plugins))
+    }
+
+    pub fn register_plugin<P: Plugin>(&mut self, init_ctx: PluginInitCtx) {
         let id = TypeId::of::<P>();
         self.plugins
             .insert(id, PluginContainer::new(Box::new(P::init(init_ctx))));
@@ -92,22 +123,23 @@ impl<T: Any> PluginAny for T {
     }
 }
 
-pub struct InitCtx<'a> {
-    pub tree: &'a mut Tree,
+pub struct PluginInitCtx<'a> {
     pub render_resource: &'a RenderResource,
 }
 
-pub struct UpdateCtx<'a> {
+pub struct PluginCtx<'a> {
     pub tree: &'a mut Tree,
     pub render_resource: &'a RenderResource,
 }
 
 pub trait Plugin: PluginAny {
-    fn init(ctx: InitCtx) -> Self
+    fn init(ctx: PluginInitCtx) -> Self
     where
         Self: Sized;
 
-    fn update(&mut self, _ctx: UpdateCtx) {}
+    fn start(&mut self, _ctx: PluginCtx) {}
+
+    fn update(&mut self, _ctx: PluginCtx) {}
 }
 
 pub trait PluginFetch<'a> {

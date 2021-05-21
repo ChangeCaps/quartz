@@ -7,7 +7,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-quartz-engine = { path = "../quartz-engine" }
+quartz-engine = { path = "../quartz-engine", features = ["editor_bridge"] }
 quartz-render = { path = "../quartz-render" }
 egui = "0.12"
 winit = "0.25"

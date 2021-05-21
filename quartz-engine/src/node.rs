@@ -3,8 +3,9 @@ use crate::plugin::*;
 use crate::tree::*;
 use egui::*;
 use quartz_render::prelude::*;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct NodeId(pub u64);
 
 pub struct Node {
@@ -23,7 +24,10 @@ impl Node {
             component: component,
         }
     }
+}
 
+#[cfg(feature = "editor_bridge")]
+impl Node {
     pub fn inspector_ui(
         &mut self,
         plugins: &Plugins,
@@ -33,12 +37,6 @@ impl Node {
         ui: &mut Ui,
     ) {
         ui.text_edit_singleline(&mut self.name);
-
-        ui.horizontal(|ui| {
-            if ui.button("Remove").clicked() {
-                tree.despawn(*node_id);
-            }
-        });
 
         ui.separator();
 
@@ -103,7 +101,7 @@ impl Node {
         node_id: &NodeId,
         tree: &mut Tree,
         render_resource: &RenderResource,
-        render_pass: &mut EmptyRenderPass<'_, '_, format::Rgba8UnormSrgb, format::Depth32Float>,
+        render_pass: &mut EmptyRenderPass<'_, '_, format::TargetFormat, format::Depth32Float>,
     ) {
         let ctx = ComponentRenderCtx {
             render_resource,
@@ -115,5 +113,23 @@ impl Node {
         };
 
         self.component.render(plugins, ctx);
+    }
+
+    pub fn despawn(
+        &mut self,
+        plugins: &Plugins,
+        node_id: &NodeId,
+        tree: &mut Tree,
+        render_resource: &RenderResource,
+    ) {
+        let ctx = ComponentCtx {
+            tree,
+            node_id,
+            transform: &mut self.transform,
+            global_transform: &self.global_transform,
+            render_resource,
+        };
+
+        self.component.despawn(plugins, ctx);
     }
 }

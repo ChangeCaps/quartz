@@ -1,31 +1,28 @@
-use egui::*;
+use quartz_engine::egui::*;
 use quartz_engine::prelude::*;
 use std::sync::Arc;
 
-pub struct Mesh {
-    pipeline: Arc<RenderPipeline<format::Rgba8UnormSrgb>>,
+#[derive(Reflect)]
+pub struct MeshComponent {
+    mesh: Mesh,
 }
 
-impl Init for Mesh {
-    fn init(render: &mut Render) -> Self {
-        Self {
-            pipeline: render.pipeline.clone(),
-        }
+impl InitComponent for MeshComponent {
+    fn init(_render: &mut Render) -> Self {
+        let mut mesh = Mesh::new();
+
+        mesh.set_attribute::<Vec3>("vertex_position", vec![]);
+        mesh.set_indices(vec![]);
+
+        Self { mesh }
     }
 }
 
-impl Component for Mesh {
+impl Component for MeshComponent {
     type Plugins = Render;
 
     fn name() -> &'static str {
         "Mesh"
-    }
-
-    fn inspector_ui(&mut self, _: &mut Render, ctx: ComponentCtx, ui: &mut Ui) {
-        if ui.button("Spawn Child").clicked() {
-            ctx.tree
-                .spawn_child(Mesh::new(self.pipeline.clone()), ctx.node_id);
-        }
     }
 
     fn update(&mut self, _: &mut Render, ctx: ComponentCtx) {
@@ -33,26 +30,26 @@ impl Component for Mesh {
     }
 
     fn render(&mut self, render: &mut Render, ctx: ComponentRenderCtx) {
-        let size = ctx.render_resource.target_size();
-
         if let Some(view_proj) = render.camera {
-            self.pipeline.bind_uniform("ViewProj", view_proj);
-            self.pipeline
+            render.pipeline.bind_uniform("ViewProj", view_proj);
+            render
+                .pipeline
                 .bind_uniform("Model", ctx.global_transform.matrix());
-            self.pipeline.bind_uniform("Aspect", size.x / size.y);
 
-            ctx.render_pass.with_pipeline(&self.pipeline).draw(0..3);
+            ctx.render_pass
+                .with_pipeline(&render.pipeline)
+                .draw_mesh(&self.mesh);
         }
     }
 }
 
-impl Mesh {
-    pub fn new(pipeline: Arc<RenderPipeline<format::Rgba8UnormSrgb>>) -> Self {
-        Self { pipeline }
+impl MeshComponent {
+    pub fn new(mesh: Mesh) -> Self {
+        Self { mesh }
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Reflect)]
 pub struct Camera {
     pub projection: PerspectiveProjection,
 }
@@ -71,40 +68,42 @@ impl Component for Camera {
     }
 
     fn update(&mut self, render: &mut Render, ctx: ComponentCtx) {
+        let size = ctx.render_resource.target_size();
+        self.projection.aspect = size.x / size.y;
+
         let view_proj = self.projection.matrix() * ctx.global_transform.matrix().inverse();
 
         render.camera = Some(view_proj);
     }
+
+    fn despawn(&mut self, render: &mut Render, _ctx: ComponentCtx) {
+        render.camera = None;
+    }
 }
 
 pub struct Render {
-    pub pipeline: Arc<RenderPipeline<format::Rgba8UnormSrgb>>,
+    pub pipeline: RenderPipeline,
     pub camera: Option<Mat4>,
 }
 
 impl Plugin for Render {
-    fn init(ctx: InitCtx) -> Self {
+    fn init(ctx: PluginInitCtx) -> Self {
         let shader =
             Shader::from_glsl(include_str!("shader.vert"), include_str!("shader.frag")).unwrap();
-        let pipeline = Arc::new(
-            RenderPipeline::new(
-                PipelineDescriptor::default_settings(shader),
-                ctx.render_resource,
-            )
-            .unwrap(),
-        );
-
-        ctx.tree.spawn(Mesh::new(pipeline.clone()));
-        ctx.tree.spawn(Camera::new());
+        let pipeline = RenderPipeline::new(
+            PipelineDescriptor::default_settings(shader),
+            ctx.render_resource,
+        )
+        .unwrap();
 
         Self {
-            pipeline: pipeline.clone(),
+            pipeline: pipeline,
             camera: None,
         }
     }
 }
 
 quartz_engine::bridge! {
-    components: { Mesh, Camera }
+    components: { MeshComponent, Camera }
     plugins: { Render }
 }
