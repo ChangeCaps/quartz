@@ -1,5 +1,6 @@
 use glam::*;
 
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct PerspectiveProjection {
     pub aspect: f32,
     pub fov: f32,
@@ -24,6 +25,7 @@ impl PerspectiveProjection {
     }
 }
 
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct OrthographicProjection {
     pub left: f32,
     pub right: f32,
@@ -45,7 +47,6 @@ impl Default for OrthographicProjection {
         }
     }
 }
-
 impl OrthographicProjection {
     pub fn matrix(&self) -> Mat4 {
         Mat4::orthographic_rh(

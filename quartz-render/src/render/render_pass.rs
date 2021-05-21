@@ -300,7 +300,9 @@ impl<'a, 'b, 'c, C: TextureFormat, D: TextureFormat> PipelineRenderPass<'a, 'b, 
     pub fn set_bindings(&mut self, mut bindings: Bindings) -> &mut Self {
         let bind_groups = bindings.generate_groups(self.pipeline, self.pass.ctx.render_resource);
 
-        self.pass.commands.push(Command::SetBindings { bind_groups });
+        self.pass
+            .commands
+            .push(Command::SetBindings { bind_groups });
 
         self
     }

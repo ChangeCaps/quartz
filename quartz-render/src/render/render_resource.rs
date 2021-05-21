@@ -113,9 +113,11 @@ impl RenderResource {
             .download
             .store(true, std::sync::atomic::Ordering::SeqCst);
 
+        let format = F::format(self.target_format());
+
         self.render_target = RenderTarget::Texture {
             extent: texture.dimensions.extent(),
-            format: F::format(self.target_format()),
+            format,
             view: texture_view.view,
         };
     }

@@ -2,6 +2,7 @@ use crate::color::*;
 use crate::render::*;
 use bytemuck::*;
 use glam::*;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use wgpu::util::DeviceExt;
@@ -26,15 +27,15 @@ pub trait VertexAttribute: Pod {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct VertexAttributeData {
-    pub name: &'static str,
+    pub name: String,
     pub format: wgpu::VertexFormat,
     pub data: Vec<u8>,
 }
 
 impl VertexAttributeData {
-    pub fn new<V: VertexAttribute>(name: &'static str, data: Vec<V>) -> Self {
+    pub fn new<V: VertexAttribute>(name: String, data: Vec<V>) -> Self {
         Self {
             name,
             format: V::format(),
@@ -43,10 +44,13 @@ impl VertexAttributeData {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Mesh {
     pub vertex_data: HashMap<String, VertexAttributeData>,
     pub indices: Vec<u32>,
+    #[serde(skip)]
     pub(crate) index_buffer: Mutex<Option<Arc<wgpu::Buffer>>>,
+    #[serde(skip)]
     pub(crate) vertex_buffers: Mutex<HashMap<String, Arc<wgpu::Buffer>>>,
 }
 
@@ -76,14 +80,14 @@ impl Mesh {
         *self.index_buffer.lock().unwrap() = None;
     }
 
-    pub fn set_attribute<V: VertexAttribute>(&mut self, name: &'static str, data: Vec<V>) {
-        let attr = VertexAttributeData::new(name, data);
+    pub fn set_attribute<V: VertexAttribute>(&mut self, name: &str, data: Vec<V>) {
+        let attr = VertexAttributeData::new(name.into(), data);
 
         self.vertex_data.insert(name.into(), attr);
         self.vertex_buffers.lock().unwrap().remove(name);
     }
 
-    pub fn get_attribute<V: VertexAttribute>(&self, name: &'static str) -> Option<&[V]> {
+    pub fn get_attribute<V: VertexAttribute>(&self, name: &str) -> Option<&[V]> {
         if let Some(data) = self.vertex_data.get(name) {
             if V::format() == data.format {
                 Some(cast_slice(&data.data))
