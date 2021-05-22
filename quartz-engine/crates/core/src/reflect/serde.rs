@@ -4,7 +4,7 @@ use crate::plugin::*;
 use crate::tree::*;
 use quartz_render::transform::Transform;
 use serde::{
-    de::{self, DeserializeSeed, Deserializer, MapAccess, Visitor},
+    de::{self, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor},
     ser::{SerializeStruct, Serializer},
     Deserialize, Serialize,
 };
@@ -16,7 +16,7 @@ impl Serialize for Node {
 
         state.serialize_field("name", &self.name)?;
         state.serialize_field("transform", &self.transform)?;
-        state.serialize_field("component", &self.component)?;
+        state.serialize_field("component", self.component.as_ref())?;
 
         state.end()
     }
@@ -46,11 +46,11 @@ impl Serialize for Tree {
     }
 }
 
-impl<'a> Serialize for dyn ComponentPod {
+impl Serialize for dyn ComponentPod {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let mut state = serializer.serialize_struct("Component", 2)?;
 
-        state.serialize_field("type", self.name())?;
+        state.serialize_field("type", self.long_name())?;
         state.serialize_field("component", self.as_serialize())?;
 
         state.end()
@@ -87,6 +87,36 @@ impl<'a, 'de> DeserializeSeed<'de> for TreeDeserializer<'a> {
                 formatter.write_str("struct Tree")?;
 
                 Ok(())
+            }
+
+            fn visit_seq<V: SeqAccess<'de>>(self, mut seq: V) -> Result<Tree, V::Error> {
+                let nodes = seq
+                    .next_element_seed(NodesDeserializer {
+                        plugins: self.plugins,
+                        components: self.components,
+                    })?
+                    .ok_or(de::Error::invalid_length(0, &self))?;
+
+                let next_node_id = nodes
+                    .keys()
+                    .max_by(|a, b| a.0.cmp(&b.0))
+                    .map(|id| NodeId(id.0 + 1))
+                    .unwrap_or(NodeId(0));
+
+                Ok(Tree {
+                    nodes,
+                    children: seq
+                        .next_element()?
+                        .ok_or(de::Error::invalid_length(1, &self))?,
+                    parents: seq
+                        .next_element()?
+                        .ok_or(de::Error::invalid_length(2, &self))?,
+                    base: seq
+                        .next_element()?
+                        .ok_or(de::Error::invalid_length(3, &self))?,
+                    next_node_id,
+                    despawn: Vec::new(),
+                })
             }
 
             fn visit_map<V: MapAccess<'de>>(self, mut map: V) -> Result<Tree, V::Error> {
@@ -261,6 +291,26 @@ impl<'a, 'de> DeserializeSeed<'de> for NodeDeserializer<'a> {
                 Ok(())
             }
 
+            fn visit_seq<V: SeqAccess<'de>>(self, mut seq: V) -> Result<Self::Value, V::Error> {
+                println!("{:?}", seq.size_hint());
+
+                Ok(Node {
+                    name: seq
+                        .next_element()?
+                        .ok_or(de::Error::invalid_length(0, &self))?,
+                    transform: seq
+                        .next_element()?
+                        .ok_or(de::Error::invalid_length(1, &self))?,
+                    global_transform: Transform::IDENTITY,
+                    component: seq
+                        .next_element_seed(ComponentPodDeserializer {
+                            plugins: self.plugins,
+                            components: self.components,
+                        })?
+                        .ok_or(de::Error::invalid_length(2, &self))?,
+                })
+            }
+
             fn visit_map<V: MapAccess<'de>>(self, mut map: V) -> Result<Self::Value, V::Error> {
                 let mut name = None;
                 let mut transform = None;
@@ -353,6 +403,21 @@ impl<'a, 'de> DeserializeSeed<'de> for ComponentPodDeserializer<'a> {
                 Ok(())
             }
 
+            fn visit_seq<V: SeqAccess<'de>>(self, mut seq: V) -> Result<Self::Value, V::Error> {
+                let ty: String = seq
+                    .next_element()?
+                    .ok_or(de::Error::invalid_length(0, &self))?;
+                let component = seq
+                    .next_element_seed(ComponentDeserializer {
+                        name: &ty,
+                        plugins: self.plugins,
+                        components: self.components,
+                    })?
+                    .ok_or(de::Error::invalid_length(1, &self))?;
+
+                Ok(component)
+            }
+
             fn visit_map<V: MapAccess<'de>>(self, mut map: V) -> Result<Self::Value, V::Error> {
                 let mut ty = None;
                 let mut component = None;
@@ -386,6 +451,8 @@ impl<'a, 'de> DeserializeSeed<'de> for ComponentPodDeserializer<'a> {
             }
         }
 
+        println!("deasdasd");
+
         const FIELDS: &[&str] = &["type", "component"];
         deserializer.deserialize_struct(
             "Component",
@@ -412,7 +479,10 @@ impl<'a, 'de> DeserializeSeed<'de> for ComponentDeserializer<'a> {
         D: Deserializer<'de>,
     {
         println!("loading component: {}", self.name);
-        let mut component = self.components.init(self.name, self.plugins).unwrap();
+        let mut component = self
+            .components
+            .init_long_name(self.name, self.plugins)
+            .unwrap();
 
         component.reflect(&mut <dyn erased_serde::Deserializer>::erase(deserializer));
 

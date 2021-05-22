@@ -2,6 +2,7 @@ use crate::component::*;
 use crate::game_state::*;
 use crate::plugin::*;
 use crate::tree::*;
+use crate::types::*;
 use libloading::*;
 use quartz_render::prelude::*;
 use serde::{de::DeserializeSeed, Deserializer};

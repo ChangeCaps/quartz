@@ -46,10 +46,16 @@ impl Tree {
         id
     }
 
-    pub fn spawn_child(&mut self, component: impl ToPod, parent_id: &NodeId) -> Option<NodeId> {
-        if self.nodes.contains_key(parent_id) {
+    pub fn spawn_child(
+        &mut self,
+        component: impl ToPod,
+        parent_id: impl Into<NodeId>,
+    ) -> Option<NodeId> {
+        let parent_id = parent_id.into();
+
+        if self.nodes.contains_key(&parent_id) {
             let child_id = self.spawn(component);
-            self.set_parent(*parent_id, child_id);
+            self.set_parent(parent_id, child_id);
 
             Some(child_id)
         } else {
@@ -57,11 +63,12 @@ impl Tree {
         }
     }
 
-    pub fn despawn(&mut self, node: NodeId) {
-        self.despawn.push(node);
+    pub fn despawn(&mut self, node: impl Into<NodeId>) {
+        self.despawn.push(node.into());
     }
 
-    pub(crate) fn remove_recursive(&mut self, node: NodeId) {
+    pub(crate) fn remove_recursive(&mut self, node: impl Into<NodeId>) {
+        let node = node.into();
         self.nodes.remove(&node);
 
         if let Some(parent) = self.parents.remove(&node) {
@@ -75,7 +82,10 @@ impl Tree {
         }
     }
 
-    pub fn set_parent(&mut self, parent: NodeId, child: NodeId) {
+    pub fn set_parent(&mut self, parent: impl Into<NodeId>, child: impl Into<NodeId>) {
+        let parent = parent.into();
+        let child = child.into();
+
         if let Some(parent) = self.parents.remove(&child) {
             if let Some(children) = self.children.get_mut(&parent) {
                 children.retain(|c| *c != child);
@@ -90,16 +100,19 @@ impl Tree {
             .push(child);
     }
 
-    pub fn get_children(&self, parent: NodeId) -> &Vec<NodeId> {
+    pub fn get_children(&self, parent: impl Into<NodeId>) -> &Vec<NodeId> {
+        let parent = parent.into();
         self.children.get(&parent).unwrap()
     }
 
-    pub fn get_parent(&self, child: NodeId) -> Option<NodeId> {
+    pub fn get_parent(&self, child: impl Into<NodeId>) -> Option<NodeId> {
+        let child = child.into();
         self.parents.get(&child).cloned()
     }
 
-    pub fn get_node<'a>(&self, node_id: &NodeId) -> Option<NodeGuard<'a>> {
-        if let Some(container) = self.nodes.get(node_id) {
+    pub fn get_node<'a>(&self, node_id: impl Into<NodeId>) -> Option<NodeGuard<'a>> {
+        let node_id = node_id.into();
+        if let Some(container) = self.nodes.get(&node_id) {
             container.guard()
         } else {
             None

@@ -17,10 +17,10 @@ impl Tree {
         ScrollArea::from_max_height(300.0).show(ui, |ui| {
             for component in components.components() {
                 if ui.button(component).clicked() {
-                    let component = components.init(component, plugins).unwrap();
+                    let component = components.init_short_name(component, plugins).unwrap();
 
                     if let Some(node) = selected_node {
-                        self.spawn_child(component, node);
+                        self.spawn_child(component, *node);
                     } else {
                         self.spawn(component);
                     }

@@ -47,8 +47,8 @@ pub fn derive_inspect(input: proc_macro::TokenStream) -> proc_macro::TokenStream
     let inspect = inspect(&input.data);
 
     let expanded = quote! {
-        impl #impl_generics quartz_engine::inspect::Inspect for #name #ty_generics #where_clause {
-            fn inspect(&mut self, ui: &mut quartz_engine::egui::Ui) -> bool {
+        impl #impl_generics quartz_engine::core::inspect::Inspect for #name #ty_generics #where_clause {
+            fn inspect(&mut self, ui: &mut quartz_engine::core::egui::Ui) -> bool {
                 #inspect
             }
         }

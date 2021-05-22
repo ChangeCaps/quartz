@@ -4,6 +4,7 @@ use crate::reflect::*;
 use crate::tree::*;
 use egui::Ui;
 use quartz_render::prelude::*;
+use std::any::{Any, TypeId};
 use std::collections::HashMap;
 
 pub struct ComponentCtx<'a> {
@@ -41,10 +42,6 @@ where
 #[allow(unused_variables)]
 pub trait Component: 'static {
     type Plugins: for<'a> PluginFetch<'a>;
-
-    fn name() -> &'static str
-    where
-        Self: Sized;
 
     fn inspector_ui(
         &mut self,
@@ -97,18 +94,26 @@ impl ToPod for Box<dyn ComponentPod> {
     }
 }
 
-pub trait ComponentPod: Reflect + 'static {
-    fn name(&self) -> &str;
+pub trait ComponentPod: Reflect + Any {
+    fn short_name(&self) -> &str;
+    fn long_name(&self) -> &str;
     fn inspector_ui(&mut self, plugins: &Plugins, ctx: ComponentCtx, ui: &mut Ui);
     fn update(&mut self, plugins: &Plugins, ctx: ComponentCtx);
     fn editor_update(&mut self, plugins: &Plugins, ctx: ComponentCtx);
     fn render(&mut self, plugins: &Plugins, ctx: ComponentRenderCtx);
     fn despawn(&mut self, plugins: &Plugins, ctx: ComponentCtx);
+    fn as_any(&self) -> &dyn Any;
+    fn as_any_mut(&mut self) -> &mut dyn Any;
+    fn get_type_id(&self) -> TypeId;
 }
 
 impl<T: Component + Reflect> ComponentPod for T {
-    fn name(&self) -> &str {
-        T::name()
+    fn short_name(&self) -> &str {
+        T::short_name_const()
+    }
+
+    fn long_name(&self) -> &str {
+        T::long_name_const()
     }
 
     fn inspector_ui(&mut self, plugins: &Plugins, ctx: ComponentCtx, ui: &mut Ui) {
@@ -140,10 +145,23 @@ impl<T: Component + Reflect> ComponentPod for T {
             Component::despawn(self, plugins, ctx);
         });
     }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn get_type_id(&self) -> TypeId {
+        TypeId::of::<Self>()
+    }
 }
 
 pub struct Components {
-    pub inits: HashMap<&'static str, Box<fn(&Plugins) -> Box<dyn ComponentPod>>>,
+    pub inits_short_name: HashMap<&'static str, Box<fn(&Plugins) -> Box<dyn ComponentPod>>>,
+    pub inits_long_name: HashMap<&'static str, Box<fn(&Plugins) -> Box<dyn ComponentPod>>>,
 }
 
 fn init<C: InitComponent + Reflect>(plugins: &Plugins) -> Box<dyn ComponentPod> {
@@ -153,19 +171,39 @@ fn init<C: InitComponent + Reflect>(plugins: &Plugins) -> Box<dyn ComponentPod> 
 impl Components {
     pub fn new() -> Self {
         Self {
-            inits: HashMap::new(),
+            inits_short_name: HashMap::new(),
+            inits_long_name: HashMap::new(),
         }
     }
 
     pub fn components(&self) -> Vec<&'static str> {
-        self.inits.keys().cloned().collect()
+        self.inits_short_name.keys().cloned().collect()
     }
 
     pub fn register_component<C: InitComponent + Reflect>(&mut self) {
-        self.inits.insert(C::name(), Box::new(init::<C>));
+        self.inits_short_name
+            .insert(C::short_name_const(), Box::new(init::<C>));
+        self.inits_long_name
+            .insert(C::long_name_const(), Box::new(init::<C>));
     }
 
-    pub fn init(&self, component: &str, plugins: &Plugins) -> Option<Box<dyn ComponentPod>> {
-        self.inits.get(component).map(|init| init(plugins))
+    pub fn init_short_name(
+        &self,
+        component: &str,
+        plugins: &Plugins,
+    ) -> Option<Box<dyn ComponentPod>> {
+        self.inits_short_name
+            .get(component)
+            .map(|init| init(plugins))
+    }
+
+    pub fn init_long_name(
+        &self,
+        component: &str,
+        plugins: &Plugins,
+    ) -> Option<Box<dyn ComponentPod>> {
+        self.inits_long_name
+            .get(component)
+            .map(|init| init(plugins))
     }
 }

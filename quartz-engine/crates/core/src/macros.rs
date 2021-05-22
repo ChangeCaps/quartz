@@ -1,33 +1,25 @@
 #[macro_export]
-macro_rules! bridge {
+macro_rules! register_types {
     {
-        components: { $( $component:path ),+ $(,)? }
-        plugins: { $( $plugin:path ),+ $(,)? }
+        $register_types:path
     } => {
-        mod new {
+        mod quartz_engine_editor_bridge {
             use super::*;
+            use quartz_engine::core::render::render::RenderResource;
+            use quartz_engine::core::types::Types;
+            use quartz_engine::register_builtin_types;
+            use quartz_engine::core::plugin::Plugins;
+            use quartz_engine::core::component::Components;
 
             #[no_mangle]
-            pub fn new(render_resource: &quartz_engine::render::prelude::RenderResource) ->
-                (quartz_engine::component::Components, quartz_engine::plugin::Plugins)
-            {
-                let mut components = quartz_engine::component::Components::new();
-                let mut plugins = quartz_engine::plugin::Plugins::new();
+            pub fn new(render_resource: &RenderResource) -> (Components, Plugins) {
+                let mut types = Types::new(render_resource);
 
-                $(
-                    components.register_component::<$component>();
-                )+
+                register_builtin_types(&mut types);
 
+                $register_types(&mut types);
 
-                $(
-                    let init_ctx = quartz_engine::prelude::PluginInitCtx {
-                        render_resource,
-                    };
-
-                    plugins.register_plugin::<$plugin>(init_ctx);
-                )+
-
-                (components, plugins)
+                (types.components, types.plugins)
             }
         }
     };

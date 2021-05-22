@@ -11,7 +11,10 @@ members = ["crates/*"]
 
 [dependencies]
 quartz-engine-core = { path = "crates/core" }
+quartz-engine-derive = { path = "crates/derive" }
+quartz-engine-builtins = { path = "crates/builtins", optional = true }
 
 [features]
-default = ["editor_bridge"]
+default = ["builtins", "editor_bridge"]
+builtins = ["quartz-engine-builtins"]
 editor_bridge = ["quartz-engine-core/editor_bridge"]

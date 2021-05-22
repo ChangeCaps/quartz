@@ -5,6 +5,7 @@ pub mod node;
 pub mod plugin;
 pub mod reflect;
 pub mod tree;
+pub mod types;
 
 #[cfg(feature = "editor_bridge")]
 pub mod bridge;
@@ -25,11 +26,12 @@ pub mod editor_bridge {
 }
 
 pub mod prelude {
-    pub use crate::component::*;
+    pub use crate::component::{Component, ComponentCtx, ComponentRenderCtx};
     pub use crate::inspect::Inspect;
     pub use crate::node::*;
     pub use crate::plugin::{Plugin, PluginCtx, PluginInitCtx, Plugins};
     pub use crate::reflect::Reflect;
     pub use crate::render::prelude::*;
     pub use crate::tree::Tree;
+    pub use crate::types::*;
 }

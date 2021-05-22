@@ -48,19 +48,23 @@ pub fn derive_reflect(input: proc_macro::TokenStream) -> proc_macro::TokenStream
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     let expanded = quote! {
-        impl #impl_generics quartz_engine::serde::Serialize for #name #ty_generics #where_clause {
-            fn serialize<S: quartz_engine::serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        impl #impl_generics quartz_engine::core::serde::Serialize for #name #ty_generics #where_clause {
+            fn serialize<S: quartz_engine::core::serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
                 #serialize
             }
         }
 
-        impl #impl_generics quartz_engine::reflect::Reflect for #name #ty_generics #where_clause {
-            fn reflect(&mut self, deserializer: &mut dyn quartz_engine::erased_serde::Deserializer) {
+        impl #impl_generics quartz_engine::core::reflect::Reflect for #name #ty_generics #where_clause {
+            fn reflect(&mut self, deserializer: &mut dyn quartz_engine::core::erased_serde::Deserializer) {
                 #reflect
             }
 
-            fn as_serialize(&self) -> &dyn quartz_engine::erased_serde::Serialize {
+            fn as_serialize(&self) -> &dyn quartz_engine::core::erased_serde::Serialize {
                 self
+            }
+
+            fn short_name_const() -> &'static str {
+                stringify!(#name)
             }
         }
     };
@@ -71,13 +75,13 @@ pub fn derive_reflect(input: proc_macro::TokenStream) -> proc_macro::TokenStream
 fn add_trait_bounds(mut generics: Generics) -> Generics {
     for param in &mut generics.params {
         if let GenericParam::Type(type_param) = param {
-            type_param
-                .bounds
-                .push(parse_quote!(quartz_engine::serde::de::DeserializeOwned));
+            type_param.bounds.push(parse_quote!(
+                quartz_engine::core::serde::de::DeserializeOwned
+            ));
 
             type_param
                 .bounds
-                .push(parse_quote!(quartz_engine::serde::Serialize));
+                .push(parse_quote!(quartz_engine::core::serde::Serialize));
         }
     }
 
@@ -141,7 +145,27 @@ fn reflect(ident: &Ident, generics: &Generics, data: &Data) -> TokenStream {
                             #(
                                 #names => Ok(Field::#idents),
                             )*
-                            _ => Err(quartz_engine::serde::de::Error::unknown_field(value, FIELDS)),
+                            _ => Err(quartz_engine::core::serde::de::Error::unknown_field(value, FIELDS)),
+                        }
+                    }
+                };
+
+                let visit_seq = {
+                    let idents = idents.clone();
+                    let indices = 0..idents.len();
+
+                    quote! {
+                        fn visit_seq<V>(self, mut seq: V) -> Result<(), V::Error>
+                        where
+                            V: quartz_engine::core::serde::de::SeqAccess<'de>,
+                        {
+                            use quartz_engine::core::serde::de::{SeqAccess, Error};
+
+                            #(
+                                self.#idents = seq.next_element()?.ok_or(Error::invalid_length(#indices, &self))?;
+                            )*
+
+                            Ok(())
                         }
                     }
                 };
@@ -155,18 +179,18 @@ fn reflect(ident: &Ident, generics: &Generics, data: &Data) -> TokenStream {
 
                 quote! {
                     #field
-                    use quartz_engine::serde::Deserializer;
+                    use quartz_engine::core::serde::Deserializer;
 
-                    impl<'de> quartz_engine::serde::Deserialize<'de> for Field {
+                    impl<'de> quartz_engine::core::serde::Deserialize<'de> for Field {
                         fn deserialize<D>(deserializer: D) -> Result<Field, D::Error>
                         where
-                            D: quartz_engine::serde::Deserializer<'de>,
+                            D: quartz_engine::core::serde::Deserializer<'de>,
                         {
-                            use quartz_engine::serde::Deserializer;
+                            use quartz_engine::core::serde::Deserializer;
 
                             struct FieldVisitor;
 
-                            impl<'a, 'de> quartz_engine::serde::de::Visitor<'de> for FieldVisitor {
+                            impl<'a, 'de> quartz_engine::core::serde::de::Visitor<'de> for FieldVisitor {
                                 type Value = Field;
 
                                 fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -177,7 +201,7 @@ fn reflect(ident: &Ident, generics: &Generics, data: &Data) -> TokenStream {
 
                                 fn visit_str<E>(self, value: &str) -> Result<Field, E>
                                 where
-                                    E: quartz_engine::serde::de::Error,
+                                    E: quartz_engine::core::serde::de::Error,
                                 {
                                     #field_match
                                 }
@@ -187,7 +211,8 @@ fn reflect(ident: &Ident, generics: &Generics, data: &Data) -> TokenStream {
                         }
                     }
 
-                    impl #impl_generics quartz_engine::serde::de::Visitor<'de> for &mut #ident <#type_params> #where_clause
+                    impl #impl_generics quartz_engine::core::serde::de::Visitor<'de> for
+                        &mut #ident <#type_params> #where_clause
                     {
                         type Value = ();
 
@@ -197,11 +222,13 @@ fn reflect(ident: &Ident, generics: &Generics, data: &Data) -> TokenStream {
                             Ok(())
                         }
 
+                        #visit_seq
+
                         fn visit_map<V>(self, mut map: V) -> Result<(), V::Error>
                         where
-                            V: quartz_engine::serde::de::MapAccess<'de>,
+                            V: quartz_engine::core::serde::de::MapAccess<'de>,
                         {
-                            use quartz_engine::serde::de::MapAccess;
+                            use quartz_engine::core::serde::de::MapAccess;
 
                             while let Some(key) = map.next_key::<Field>()? {
                                 match key {
@@ -250,8 +277,8 @@ fn serialize(ident: &Ident, data: &Data) -> TokenStream {
                 });
 
                 quote! {
-                    use quartz_engine::serde::ser::SerializeStruct;
-                    use quartz_engine::serde::Serializer;
+                    use quartz_engine::core::serde::ser::SerializeStruct;
+                    use quartz_engine::core::serde::Serializer;
 
                     let mut state = serializer.serialize_struct(#name, #num_fields)?;
 

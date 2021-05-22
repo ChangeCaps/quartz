@@ -1363,7 +1363,9 @@ checksum = "c3a66d5e88679f2720126c11ee29da07a08f094eac52306b066edd7d393752d6"
 name = "quartz-engine"
 version = "0.1.0"
 dependencies = [
+ "quartz-engine-builtins",
  "quartz-engine-core",
+ "quartz-engine-derive",
 ]
 
 [[package]]
@@ -1397,7 +1399,7 @@ dependencies = [
 [[package]]
 name = "quartz-render"
 version = "0.1.0"
-source = "git+https://github.com/ChangeCaps/quartz?branch=main#1677f46c8c69a916a00762992b0e0f2dce42bce1"
+source = "git+https://github.com/ChangeCaps/quartz?branch=main#63f586831ffb85994c8d1447d77640bd0a86dceb"
 dependencies = [
  "anyhow",
  "bytemuck",

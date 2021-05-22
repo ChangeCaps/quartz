@@ -9,21 +9,35 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct NodeId(pub u64);
 
+impl Into<NodeId> for &NodeId {
+    fn into(self) -> NodeId {
+        *self
+    }
+}
+
 pub struct Node {
     pub name: String,
     pub transform: Transform,
     pub(crate) global_transform: Transform,
-    pub component: Box<dyn ComponentPod>,
+    pub(crate) component: Box<dyn ComponentPod>,
 }
 
 impl Node {
     pub fn new(component: Box<dyn ComponentPod>) -> Self {
         Self {
-            name: String::from(component.name()),
+            name: String::from(component.short_name()),
             transform: Transform::IDENTITY,
             global_transform: Transform::IDENTITY,
             component: component,
         }
+    }
+
+    pub fn get_component<T: ComponentPod>(&self) -> Option<&T> {
+        self.component.as_ref().as_any().downcast_ref::<T>()
+    }
+
+    pub fn get_component_mut<T: ComponentPod>(&mut self) -> Option<&mut T> {
+        self.component.as_mut().as_any_mut().downcast_mut::<T>()
     }
 }
 
