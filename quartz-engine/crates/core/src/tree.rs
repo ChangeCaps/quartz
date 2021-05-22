@@ -125,29 +125,36 @@ impl Tree {
     }
 
     pub fn update(&mut self, plugins: &Plugins, render_resource: &RenderResource) {
-        for id in self.base.clone() {
-            self.update_node(plugins, Transform::IDENTITY, &id, render_resource);
+        for node_id in self.nodes.keys().cloned().collect::<Vec<_>>() {
+            if let Some(mut node) = self.get_node(&node_id) {
+                node.update(plugins, &node_id, self, render_resource);
+            }
         }
     }
 
-    pub fn update_node(
-        &mut self,
-        plugins: &Plugins,
-        parent_transform: Transform,
-        node_id: &NodeId,
-        render_resource: &RenderResource,
-    ) {
-        if let Some(mut node) = self.get_node(node_id) {
-            node.update(plugins, node_id, self, render_resource);
+    pub fn editor_update(&mut self, plugins: &Plugins, render_resource: &RenderResource) {
+        for node_id in self.nodes.keys().cloned().collect::<Vec<_>>() {
+            if let Some(mut node) = self.get_node(&node_id) {
+                node.editor_update(plugins, &node_id, self, render_resource);
+            }
+        }
+    }
 
-            node.global_transform = parent_transform * node.transform.clone();
-            let global_transform = node.global_transform.clone();
-            let children = self.get_children(*node_id).clone();
+    pub fn update_transforms(&self) {
+        for node_id in &self.base {
+            self.update_transform(Transform::IDENTITY, node_id);
+        }
+    }
+
+    pub fn update_transform(&self, parent_transform: Transform, node_id: &NodeId) {
+        if let Some(mut node) = self.get_node(node_id) {
+            let global_transform = parent_transform * node.transform.clone();
+            node.global_transform = global_transform.clone();
 
             drop(node);
 
-            for child in children {
-                self.update_node(plugins, global_transform.clone(), &child, render_resource);
+            for child in self.get_children(*node_id) {
+                self.update_transform(global_transform.clone(), child);
             }
         }
     }

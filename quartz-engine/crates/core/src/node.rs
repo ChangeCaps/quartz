@@ -1,4 +1,5 @@
 use crate::component::*;
+use crate::inspect::*;
 use crate::plugin::*;
 use crate::tree::*;
 use egui::*;
@@ -11,7 +12,7 @@ pub struct NodeId(pub u64);
 pub struct Node {
     pub name: String,
     pub transform: Transform,
-    pub global_transform: Transform,
+    pub(crate) global_transform: Transform,
     pub component: Box<dyn ComponentPod>,
 }
 
@@ -40,41 +41,21 @@ impl Node {
 
         ui.separator();
 
-        let speed = 0.1;
+        ScrollArea::auto_sized().show(ui, |ui| {
+            self.transform.inspect(ui);
 
-        ui.columns(3, |columns| {
-            columns[0].add(DragValue::new(&mut self.transform.translation.x).speed(speed));
-            columns[1].add(DragValue::new(&mut self.transform.translation.y).speed(speed));
-            columns[2].add(DragValue::new(&mut self.transform.translation.z).speed(speed));
+            ui.separator();
+
+            let ctx = ComponentCtx {
+                tree,
+                node_id,
+                transform: &mut self.transform,
+                global_transform: &self.global_transform,
+                render_resource,
+            };
+
+            self.component.inspector_ui(plugins, ctx, ui);
         });
-
-        let (mut yaw, mut pitch, mut roll) = self.transform.rotation.to_euler(EulerRot::XYZ);
-
-        ui.columns(3, |columns| {
-            columns[0].add(DragValue::new(&mut yaw).speed(speed));
-            columns[1].add(DragValue::new(&mut pitch).speed(speed));
-            columns[2].add(DragValue::new(&mut roll).speed(speed));
-        });
-
-        self.transform.rotation = Quat::from_euler(EulerRot::XYZ, yaw, pitch, roll);
-
-        ui.columns(3, |columns| {
-            columns[0].add(DragValue::new(&mut self.transform.scale.x).speed(speed));
-            columns[1].add(DragValue::new(&mut self.transform.scale.y).speed(speed));
-            columns[2].add(DragValue::new(&mut self.transform.scale.z).speed(speed));
-        });
-
-        ui.separator();
-
-        let ctx = ComponentCtx {
-            tree,
-            node_id,
-            transform: &mut self.transform,
-            global_transform: &self.global_transform,
-            render_resource,
-        };
-
-        self.component.inspector_ui(plugins, ctx, ui);
     }
 
     pub fn update(
@@ -93,6 +74,24 @@ impl Node {
         };
 
         self.component.update(plugins, ctx);
+    }
+
+    pub fn editor_update(
+        &mut self,
+        plugins: &Plugins,
+        node_id: &NodeId,
+        tree: &mut Tree,
+        render_resource: &RenderResource,
+    ) {
+        let ctx = ComponentCtx {
+            tree,
+            node_id,
+            transform: &mut self.transform,
+            global_transform: &self.global_transform,
+            render_resource,
+        };
+
+        self.component.editor_update(plugins, ctx);
     }
 
     pub fn render(

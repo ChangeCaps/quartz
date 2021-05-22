@@ -5,6 +5,30 @@ use crate::tree::*;
 use egui::*;
 
 impl Tree {
+    fn add_node_popup(
+        &mut self,
+        components: &Components,
+        plugins: &Plugins,
+        selected_node: &mut Option<NodeId>,
+        ui: &mut Ui,
+    ) {
+        ui.set_max_width(200.0);
+
+        ScrollArea::from_max_height(300.0).show(ui, |ui| {
+            for component in components.components() {
+                if ui.button(component).clicked() {
+                    let component = components.init(component, plugins).unwrap();
+
+                    if let Some(node) = selected_node {
+                        self.spawn_child(component, node);
+                    } else {
+                        self.spawn(component);
+                    }
+                }
+            }
+        });
+    }
+
     pub fn nodes_ui(
         &mut self,
         ui: &mut Ui,
@@ -12,8 +36,25 @@ impl Tree {
         plugins: &Plugins,
         selected_node: &mut Option<NodeId>,
     ) {
+        let popup_id = ui.make_persistent_id("add_node_popup");
+
+        let add_node_response = ui.button("Spawn Node");
+
+        ui.separator();
+
+        if add_node_response.clicked() {
+            *selected_node = None;
+            ui.memory().toggle_popup(popup_id);
+        }
+
         for id in self.base.clone() {
             self.node_ui(&id, components, plugins, ui, selected_node);
+        }
+
+        if selected_node.is_none() {
+            popup::popup_below_widget(ui, popup_id, &add_node_response, |ui| {
+                self.add_node_popup(components, plugins, selected_node, ui);
+            });
         }
     }
 
@@ -30,7 +71,7 @@ impl Tree {
 
             let children = self.get_children(*node_id).clone();
 
-            let popup_id = ui.make_persistent_id("add_component_id");
+            let popup_id = ui.make_persistent_id("add_node_popup");
 
             let response = ui
                 .horizontal(|ui| {
@@ -70,17 +111,7 @@ impl Tree {
 
             if selected {
                 popup::popup_below_widget(ui, popup_id, &response, |ui| {
-                    ui.set_max_width(200.0);
-
-                    ScrollArea::from_max_height(300.0).show(ui, |ui| {
-                        for component in components.components() {
-                            if ui.button(component).clicked() {
-                                let component = components.init(component, plugins).unwrap();
-
-                                self.spawn_child(component, &selected_node.unwrap());
-                            }
-                        }
-                    });
+                    self.add_node_popup(components, plugins, selected_node, ui);
                 });
             }
         }

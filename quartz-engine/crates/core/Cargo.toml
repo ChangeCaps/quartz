@@ -1,0 +1,17 @@
+[package]
+name = "quartz-engine-core"
+version = "0.1.0"
+authors = ["= <hjalte.nannestad@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+quartz-render = { git = "https://github.com/ChangeCaps/quartz", branch = "main" }
+quartz-engine-derive = { path = "../derive" }
+egui = "0.12"
+libloading = { version = "0.7", optional = true }
+serde = { version = "1.0.126", features = ["derive"] }
+erased-serde = "0.3.13"
+
+[features]
+default = []
+editor_bridge = ["libloading"]

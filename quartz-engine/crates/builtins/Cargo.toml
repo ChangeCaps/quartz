@@ -1,0 +1,8 @@
+[package]
+name = "quartz-engine-builtins"
+version = "0.1.0"
+authors = ["= <hjalte.nannestad@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+quartz-engine = { path = ".." }

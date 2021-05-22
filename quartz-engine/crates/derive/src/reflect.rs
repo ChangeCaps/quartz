@@ -2,7 +2,8 @@ use proc_macro2::{Span, TokenStream};
 use quote::{quote, quote_spanned};
 use syn::spanned::Spanned;
 use syn::{
-    parse::ParseStream, parse_macro_input, Attribute, Data, DeriveInput, Fields, Generics, Ident,
+    parse::ParseStream, parse_macro_input, parse_quote, Attribute, Data, DeriveInput, Fields,
+    GenericParam, Generics, Ident,
 };
 
 #[derive(Default)]
@@ -11,7 +12,7 @@ struct ReflectFieldAttributes {
 }
 
 impl ReflectFieldAttributes {
-    fn get(attributes: &Vec<Attribute>) -> ReflectFieldAttributes {
+    fn parse(attributes: &Vec<Attribute>) -> Self {
         attributes
             .iter()
             .find(|a| *a.path.get_ident().as_ref().unwrap() == REFLECT_ATTRIBUTE_NAME)
@@ -34,27 +35,26 @@ impl ReflectFieldAttributes {
 
 const REFLECT_ATTRIBUTE_NAME: &str = "reflect";
 
-#[proc_macro_derive(Reflect, attributes(reflect))]
 pub fn derive_reflect(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
     let name = input.ident;
 
-    let generics = input.generics;
+    let generics = add_trait_bounds(input.generics);
 
-    let reflect = reflect(&name, generics.clone(), &input.data);
+    let reflect = reflect(&name, &generics, &input.data);
     let serialize = serialize(&name, &input.data);
 
-    let (impl_generics, ty_generics, _where_clause) = generics.split_for_impl();
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     let expanded = quote! {
-        impl #impl_generics quartz_engine::serde::Serialize for #name #ty_generics {
+        impl #impl_generics quartz_engine::serde::Serialize for #name #ty_generics #where_clause {
             fn serialize<S: quartz_engine::serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
                 #serialize
             }
         }
 
-        impl #impl_generics quartz_engine::reflect::Reflect for #name #ty_generics {
+        impl #impl_generics quartz_engine::reflect::Reflect for #name #ty_generics #where_clause {
             fn reflect(&mut self, deserializer: &mut dyn quartz_engine::erased_serde::Deserializer) {
                 #reflect
             }
@@ -68,19 +68,52 @@ pub fn derive_reflect(input: proc_macro::TokenStream) -> proc_macro::TokenStream
     proc_macro::TokenStream::from(expanded)
 }
 
-fn reflect(ident: &Ident, generics: Generics, data: &Data) -> TokenStream {
+fn add_trait_bounds(mut generics: Generics) -> Generics {
+    for param in &mut generics.params {
+        if let GenericParam::Type(type_param) = param {
+            type_param
+                .bounds
+                .push(parse_quote!(quartz_engine::serde::de::DeserializeOwned));
+
+            type_param
+                .bounds
+                .push(parse_quote!(quartz_engine::serde::Serialize));
+        }
+    }
+
+    generics
+}
+
+fn add_de_lifetime(mut generics: Generics) -> Generics {
+    generics.params.insert(0, parse_quote!('de));
+
+    generics
+}
+
+fn reflect(ident: &Ident, generics: &Generics, data: &Data) -> TokenStream {
     let name = ident.to_string();
     match data {
         Data::Struct(data) => match &data.fields {
             Fields::Named(fields) => {
-                let idents = fields.named.iter().map(|f| f.ident.as_ref().unwrap());
-
-                let names = fields
+                let fields = fields
                     .named
                     .iter()
-                    .map(|f| f.ident.as_ref().unwrap().to_string());
+                    .filter_map(|f| {
+                        let attrs = ReflectFieldAttributes::parse(&f.attrs);
 
-                let expecting = fields.named.iter().fold(String::new(), |e, f| {
+                        if attrs.ignore {
+                            None
+                        } else {
+                            Some(f)
+                        }
+                    })
+                    .collect::<Vec<_>>();
+
+                let idents = fields.iter().map(|f| f.ident.as_ref().unwrap());
+
+                let names = fields.iter().map(|f| f.ident.as_ref().unwrap().to_string());
+
+                let expecting = fields.iter().fold(String::new(), |e, f| {
                     let ident = f.ident.as_ref().unwrap();
 
                     if e.is_empty() {
@@ -112,6 +145,13 @@ fn reflect(ident: &Ident, generics: Generics, data: &Data) -> TokenStream {
                         }
                     }
                 };
+
+                let type_params = generics.type_params().map(|t| &t.ident);
+
+                let type_params = quote!(#(#type_params)*);
+
+                let visitor_generics = add_de_lifetime(generics.clone());
+                let (impl_generics, _, where_clause) = visitor_generics.split_for_impl();
 
                 quote! {
                     #field
@@ -147,11 +187,8 @@ fn reflect(ident: &Ident, generics: Generics, data: &Data) -> TokenStream {
                         }
                     }
 
-                    struct ReflectVisitor<'a> {
-                        reflect: &'a mut #ident,
-                    }
-
-                    impl<'a, 'de> quartz_engine::serde::de::Visitor<'de> for ReflectVisitor<'a> {
+                    impl #impl_generics quartz_engine::serde::de::Visitor<'de> for &mut #ident <#type_params> #where_clause
+                    {
                         type Value = ();
 
                         fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -166,11 +203,11 @@ fn reflect(ident: &Ident, generics: Generics, data: &Data) -> TokenStream {
                         {
                             use quartz_engine::serde::de::MapAccess;
 
-                            while let Some(key) = map.next_key()? {
+                            while let Some(key) = map.next_key::<Field>()? {
                                 match key {
                                     #(
                                         Field::#idents => {
-                                            self.reflect.#idents = map.next_value()?;
+                                            self.#idents = map.next_value()?;
                                         },
                                     )*
                                 }
@@ -181,9 +218,7 @@ fn reflect(ident: &Ident, generics: Generics, data: &Data) -> TokenStream {
                     }
 
                     const FIELDS: &[&str] = &[#(#names),*];
-                    deserializer.deserialize_struct(#name, FIELDS, ReflectVisitor {
-                        reflect: self,
-                    }).unwrap();
+                    deserializer.deserialize_struct(#name, FIELDS, self).unwrap();
                 }
             }
             _ => unimplemented!(),
@@ -201,7 +236,7 @@ fn serialize(ident: &Ident, data: &Data) -> TokenStream {
                 let num_fields = fields.named.len();
 
                 let fields = fields.named.iter().filter_map(|f| {
-                    let attrs = ReflectFieldAttributes::get(&f.attrs);
+                    let attrs = ReflectFieldAttributes::parse(&f.attrs);
 
                     if attrs.ignore {
                         None

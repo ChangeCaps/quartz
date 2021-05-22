@@ -23,7 +23,7 @@ impl PluginContainer {
         self.plugin.get_mut().as_mut()
     }
 
-    pub fn get(&self) -> Option<&dyn Plugin> {
+    pub fn _get(&self) -> Option<&dyn Plugin> {
         if self.taken.load(Ordering::SeqCst) {
             None
         } else {
@@ -69,6 +69,17 @@ impl Plugins {
         }
     }
 
+    pub fn editor_start(&mut self, ctx: PluginCtx) {
+        for plugin in self.plugins.values_mut() {
+            let ctx = PluginCtx {
+                tree: ctx.tree,
+                render_resource: ctx.render_resource,
+            };
+
+            plugin.get_mut().editor_start(ctx);
+        }
+    }
+
     pub fn update(&mut self, ctx: PluginCtx) {
         for plugin in self.plugins.values_mut() {
             let ctx = PluginCtx {
@@ -77,6 +88,17 @@ impl Plugins {
             };
 
             plugin.get_mut().update(ctx);
+        }
+    }
+
+    pub fn editor_update(&mut self, ctx: PluginCtx) {
+        for plugin in self.plugins.values_mut() {
+            let ctx = PluginCtx {
+                tree: ctx.tree,
+                render_resource: ctx.render_resource,
+            };
+
+            plugin.get_mut().editor_update(ctx);
         }
     }
 
@@ -132,14 +154,19 @@ pub struct PluginCtx<'a> {
     pub render_resource: &'a RenderResource,
 }
 
+#[allow(unused_variables)]
 pub trait Plugin: PluginAny {
     fn init(ctx: PluginInitCtx) -> Self
     where
         Self: Sized;
 
-    fn start(&mut self, _ctx: PluginCtx) {}
+    fn start(&mut self, ctx: PluginCtx) {}
 
-    fn update(&mut self, _ctx: PluginCtx) {}
+    fn editor_start(&mut self, ctx: PluginCtx) {}
+
+    fn update(&mut self, ctx: PluginCtx) {}
+
+    fn editor_update(&mut self, ctx: PluginCtx) {}
 }
 
 pub trait PluginFetch<'a> {
@@ -152,7 +179,7 @@ impl<'a> PluginFetch<'a> for () {
     type Item = ();
 
     #[inline(always)]
-    fn fetch<O>(plugins: &'a Plugins, f: impl FnOnce(Self::Item) -> O) -> O {
+    fn fetch<O>(_plugins: &'a Plugins, f: impl FnOnce(Self::Item) -> O) -> O {
         f(())
     }
 }

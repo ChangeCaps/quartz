@@ -1366,10 +1366,15 @@ dependencies = [
  "egui",
  "erased-serde",
  "libloading 0.7.0",
+ "quartz-engine-builtins",
  "quartz-engine-derive",
  "quartz-render",
  "serde",
 ]
+
+[[package]]
+name = "quartz-engine-builtins"
+version = "0.1.0"
 
 [[package]]
 name = "quartz-engine-derive"
