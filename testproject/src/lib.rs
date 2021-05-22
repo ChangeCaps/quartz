@@ -1,8 +1,7 @@
 use quartz_engine::egui::*;
 use quartz_engine::prelude::*;
-use std::sync::Arc;
 
-#[derive(Reflect)]
+#[derive(Reflect, Inspect)]
 pub struct MeshComponent {
     mesh: Mesh,
 }
@@ -11,8 +10,7 @@ impl InitComponent for MeshComponent {
     fn init(_render: &mut Render) -> Self {
         let mut mesh = Mesh::new();
 
-        mesh.set_attribute::<Vec3>("vertex_position", vec![]);
-        mesh.set_indices(vec![]);
+        mesh.add_attribute::<Vec3>("vertex_position");
 
         Self { mesh }
     }
@@ -23,6 +21,10 @@ impl Component for MeshComponent {
 
     fn name() -> &'static str {
         "Mesh"
+    }
+
+    fn inspector_ui(&mut self, _: &mut Render, _ctx: ComponentCtx, ui: &mut Ui) {
+        self.inspect(ui);
     }
 
     fn update(&mut self, _: &mut Render, ctx: ComponentCtx) {
@@ -49,7 +51,7 @@ impl MeshComponent {
     }
 }
 
-#[derive(Default, Reflect)]
+#[derive(Default, Reflect, Inspect)]
 pub struct Camera {
     pub projection: PerspectiveProjection,
 }
@@ -67,6 +69,10 @@ impl Component for Camera {
         "Camera"
     }
 
+    fn inspector_ui(&mut self, _: &mut Render, _ctx: ComponentCtx, ui: &mut Ui) {
+        self.inspect(ui);
+    }
+
     fn update(&mut self, render: &mut Render, ctx: ComponentCtx) {
         let size = ctx.render_resource.target_size();
         self.projection.aspect = size.x / size.y;
@@ -76,8 +82,12 @@ impl Component for Camera {
         render.camera = Some(view_proj);
     }
 
+    fn editor_update(&mut self, render: &mut Render, ctx: ComponentCtx) {
+        Component::update(self, render, ctx);
+    }
+
     fn despawn(&mut self, render: &mut Render, _ctx: ComponentCtx) {
-        render.camera = None;
+        //render.camera = None;
     }
 }
 

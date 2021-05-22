@@ -12,8 +12,8 @@ use winit::event::{self, ElementState, MouseScrollDelta, VirtualKeyCode as VKey,
 
 pub struct GameState {
     pub state: quartz_engine::game_state::GameState,
-    pub selected_node: Option<NodeId>,
     pub bridge: Bridge,
+    pub running: bool,
 }
 
 impl GameState {
@@ -23,8 +23,8 @@ impl GameState {
 
         Self {
             state,
-            selected_node: None,
             bridge,
+            running: false,
         }
     }
 
@@ -38,9 +38,20 @@ impl GameState {
 
         Self {
             state,
-            selected_node: None,
             bridge,
+            running: false,
         }
+    }
+
+    pub fn reload<'de, D: quartz_engine::serde::Deserializer<'de>>(
+        &mut self,
+        deserializer: D,
+        render_resource: &RenderResource,
+    ) {
+        self.state = self
+            .bridge
+            .deserialize(deserializer, render_resource)
+            .unwrap();
     }
 }
 
@@ -56,6 +67,7 @@ pub struct EditorState {
     pub game: Option<GameState>,
     pub project: Project,
     pub building: Option<std::process::Child>,
+    pub selected_node: Option<NodeId>,
 }
 
 impl EditorState {
@@ -99,6 +111,7 @@ impl EditorState {
             game: None,
             project: Project::new("../testproject").unwrap(),
             building: None,
+            selected_node: None,
         }
     }
 
@@ -117,38 +130,78 @@ impl EditorState {
         Ok(())
     }
 
-    pub fn save_scene(&self) {
-        if let Some(game) = &self.game {
-            if let Ok(file) = std::fs::File::create(self.project.path.join("scene.scn")) {
-                let mut serializer =
-                    ron::Serializer::new(file, Some(Default::default()), true).unwrap();
+    pub fn start_game(&mut self, render_resource: &mut RenderResource) {
+        self.save_scene();
 
-                game.state.serialize_tree(&mut serializer).unwrap();
+        if let Some(game) = &mut self.game {
+            game.running = true;
+
+            if let Some(render_texture) = self.egui_textures.get(&0) {
+                render_resource.target_texture(render_texture);
+
+                game.state.start(render_resource);
+
+                render_resource.target_swapchain();
             }
         }
     }
 
-    pub fn load(&mut self, render_resource: &mut RenderResource) {
+    pub fn load_scene(&self) -> Option<String> {
+        if let Ok(scene) = std::fs::read_to_string(self.project.path.join("scene.scn")) {
+            Some(scene)
+        } else {
+            None
+        }
+    }
+
+    pub fn save_scene(&self) {
+        if let Some(game) = &self.game {
+            if !game.running {
+                if let Ok(file) = std::fs::File::create(self.project.path.join("scene.scn")) {
+                    let mut serializer =
+                        ron::Serializer::new(file, Some(Default::default()), true).unwrap();
+
+                    game.state.serialize_tree(&mut serializer).unwrap();
+                }
+            }
+        }
+    }
+
+    pub fn reload_game(&mut self, scene: &str, render_resource: &mut RenderResource) {
+        if let Some(game) = &mut self.game {
+            let mut deserializer = ron::Deserializer::from_str(scene).unwrap();
+
+            render_resource
+                .target_texture(self.egui_textures.get(&0).expect("main texture not found"));
+
+            game.reload(&mut deserializer, render_resource);
+
+            render_resource.target_swapchain();
+        } else {
+            self.load(Some(scene), render_resource);
+        }
+    }
+
+    pub fn load(&mut self, scene: Option<&str>, render_resource: &mut RenderResource) {
         if let Some(render_texture) = self.egui_textures.get(&0) {
             render_resource.target_texture(render_texture);
 
-            let mut state =
-                if let Ok(string) = std::fs::read_to_string(self.project.path.join("scene.scn")) {
-                    let mut deserializer = ron::Deserializer::from_str(&string).unwrap();
+            let mut state = if let Some(scene) = scene {
+                let mut deserializer = ron::Deserializer::from_str(scene).unwrap();
 
-                    GameState::deserialize(
-                        &mut deserializer,
-                        &self.project.path.join("target/release/testproject.dll"),
-                        render_resource,
-                    )
-                } else {
-                    GameState::load(
-                        &self.project.path.join("target/release/testproject.dll"),
-                        render_resource,
-                    )
-                };
+                GameState::deserialize(
+                    &mut deserializer,
+                    &self.project.path.join("target/release/testproject.dll"),
+                    render_resource,
+                )
+            } else {
+                GameState::load(
+                    &self.project.path.join("target/release/testproject.dll"),
+                    render_resource,
+                )
+            };
 
-            state.state.start(render_resource);
+            state.state.editor_start(render_resource);
 
             render_resource.target_swapchain();
 
@@ -173,7 +226,9 @@ impl quartz_render::framework::State for EditorState {
                     log::info!("Build finished successfully!");
                     log::info!("Loading build");
 
-                    self.load(ctx.render_resource);
+                    let scene = self.load_scene();
+
+                    self.load(scene.as_ref().map(|s| s.as_ref()), ctx.render_resource);
 
                     log::info!("Build loaded!");
                 } else {
@@ -192,7 +247,11 @@ impl quartz_render::framework::State for EditorState {
             if let Some(render_texture) = self.egui_textures.get(&0) {
                 ctx.render_resource.target_texture(render_texture);
 
-                game.state.update(ctx.render_resource);
+                if game.running {
+                    game.state.update(ctx.render_resource);
+                } else {
+                    game.state.editor_update(ctx.render_resource);
+                }
 
                 ctx.render_resource.target_swapchain();
             }
@@ -404,6 +463,10 @@ impl quartz_render::framework::State for EditorState {
                 let mut pass = ctx.render_pass(&desc, &self.egui_pipeline);
 
                 for ClippedMesh(rect, mesh) in &clipped_meshes {
+                    // TODO: use scissor rect
+                    let clip_rect = Vec4::new(rect.min.x, rect.min.y, rect.max.x, rect.max.y);
+                    self.egui_pipeline.bind_uniform("ClipRect", clip_rect);
+
                     match &mesh.texture_id {
                         TextureId::Egui => self.egui_pipeline.bind("tex", self.egui_texture.view()),
                         TextureId::User(id) => {

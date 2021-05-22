@@ -99,7 +99,6 @@ pub struct RenderPass<'a, 'b, C: TextureFormat, D: TextureFormat> {
 
 impl<'a, 'b, C: TextureFormat, D: TextureFormat> RenderPass<'a, 'b, C, D> {
     pub fn set_pipeline(&mut self, pipeline: &'a RenderPipeline<C, D>) -> &mut Self {
-        self.set_bindings(pipeline.bindings.lock().unwrap().clone());
         self.commands.push(Command::SetPipeline {
             pipeline: pipeline.pipeline.clone(),
         });
@@ -287,7 +286,6 @@ pub struct PipelineRenderPass<'a, 'b, 'c, C: TextureFormat, D: TextureFormat> {
 
 impl<'a, 'b, 'c, C: TextureFormat, D: TextureFormat> PipelineRenderPass<'a, 'b, 'c, C, D> {
     pub fn set_pipeline(&mut self, pipeline: &'a RenderPipeline<C, D>) -> &mut Self {
-        self.set_bindings(pipeline.bindings.lock().unwrap().clone());
         self.pass.commands.push(Command::SetPipeline {
             pipeline: pipeline.pipeline.clone(),
         });

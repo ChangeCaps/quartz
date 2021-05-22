@@ -10,15 +10,18 @@ impl EditorState {
             self.save_scene();
         }
 
-        self.top_panel_ui();
+        self.top_panel_ui(render_resource);
         self.left_panel_ui();
         self.inspector_panel_ui(render_resource);
         self.view_port_ui(render_resource);
     }
 
-    pub fn top_panel_ui(&mut self) {
+    pub fn top_panel_ui(&mut self, render_resource: &mut RenderResource) {
         let game = &mut self.game;
         let building = &self.building;
+        let mut reload = false;
+        let mut start = false;
+
         let build = TopPanel::top("top_panel")
             .show(&self.egui_ctx, |ui| {
                 ui.horizontal(|ui| {
@@ -26,8 +29,17 @@ impl EditorState {
 
                     let build_response = ui.add(Button::new("Build").enabled(building.is_none()));
 
-                    if ui.button("Stop").clicked() {
-                        *game = None;
+                    if let Some(game) = game {
+                        if game.running {
+                            if ui.button("Stop").clicked() {
+                                game.running = false;
+                                reload = true;
+                            }
+                        } else {
+                            if ui.button("Start").clicked() {
+                                start = true;
+                            }
+                        }
                     }
 
                     build_response.clicked()
@@ -37,15 +49,28 @@ impl EditorState {
             .inner;
 
         if build {
+            self.save_scene();
+
             drop(self.game.take());
 
             self.build().unwrap();
+        }
+
+        if reload {
+            let scene = self.load_scene().unwrap();
+
+            self.reload_game(&scene, render_resource);
+        }
+
+        if start {
+            self.start_game(render_resource);
         }
     }
 
     pub fn left_panel_ui(&mut self) {
         let files = &mut self.project.files;
         let game = &mut self.game;
+        let selected_node = &mut self.selected_node;
 
         SidePanel::left("left_panel", 200.0).show(&self.egui_ctx, |ui| {
             ui.separator();
@@ -60,7 +85,7 @@ impl EditorState {
                             ui,
                             &game.state.components,
                             &game.state.plugins,
-                            &mut game.selected_node,
+                            selected_node,
                         );
                     });
 
@@ -77,10 +102,10 @@ impl EditorState {
 
     pub fn inspector_panel_ui(&mut self, render_resource: &mut RenderResource) {
         if let Some(game) = &mut self.game {
-            if let Some(selected_node) = game.selected_node {
+            if let Some(selected_node) = self.selected_node {
                 if let Some(mut node) = game.state.tree.get_node(&selected_node) {
                     if let Some(render_texture) = self.egui_textures.get(&0) {
-                        SidePanel::left("inspector_panel", 200.0).show(&self.egui_ctx, |ui| {
+                        SidePanel::left("inspector_panel", 300.0).show(&self.egui_ctx, |ui| {
                             render_resource.target_texture(render_texture);
 
                             node.inspector_ui(
@@ -94,6 +119,8 @@ impl EditorState {
                             render_resource.target_swapchain();
                         });
                     }
+                } else {
+                    self.selected_node = None;
                 }
             }
         }

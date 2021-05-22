@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use wgpu::util::DeviceExt;
 
-pub trait VertexAttribute: Pod {
+pub trait VertexAttribute: Pod + Zeroable {
     fn format() -> wgpu::VertexFormat;
 
     fn size() -> wgpu::BufferAddress {
@@ -46,8 +46,8 @@ impl VertexAttributeData {
 
 #[derive(Serialize, Deserialize)]
 pub struct Mesh {
-    pub vertex_data: HashMap<String, VertexAttributeData>,
-    pub indices: Vec<u32>,
+    pub(crate) vertex_data: HashMap<String, VertexAttributeData>,
+    pub(crate) indices: Vec<u32>,
     #[serde(skip)]
     pub(crate) index_buffer: Mutex<Option<Arc<wgpu::Buffer>>>,
     #[serde(skip)]
@@ -75,9 +75,40 @@ impl Mesh {
         }
     }
 
+    pub fn vertex_data(&self) -> &HashMap<String, VertexAttributeData> {
+        &self.vertex_data
+    }
+
+    pub fn vertex_data_mut(&mut self) -> &mut HashMap<String, VertexAttributeData> {
+        &mut self.vertex_data
+    }
+
     pub fn set_indices(&mut self, indices: Vec<u32>) {
         self.indices = indices;
         *self.index_buffer.lock().unwrap() = None;
+    }
+
+    pub fn indices(&self) -> &Vec<u32> {
+        &self.indices
+    }
+
+    pub fn indices_mut(&mut self) -> &mut Vec<u32> {
+        *self.index_buffer.lock().unwrap() = None;
+        &mut self.indices
+    }
+
+    pub fn indices_mut_unmarked(&mut self) -> &mut Vec<u32> {
+        &mut self.indices
+    }
+
+    pub fn invalidate_index_buffer(&self) {
+        *self.index_buffer.lock().unwrap() = None;
+    }
+
+    pub fn add_attribute<V: VertexAttribute>(&mut self, name: &str) {
+        if !self.vertex_data.contains_key(name) {
+            self.set_attribute::<V>(name, vec![]);
+        }
     }
 
     pub fn set_attribute<V: VertexAttribute>(&mut self, name: &str, data: Vec<V>) {
@@ -101,7 +132,24 @@ impl Mesh {
 
     pub fn get_attribute_mut<V: VertexAttribute>(
         &mut self,
-        name: &'static str,
+        name: &str,
+    ) -> Option<&mut [V]> {
+        if let Some(data) = self.vertex_data.get_mut(name) {
+            self.vertex_buffers.lock().unwrap().remove(name);
+
+            if V::format() == data.format {
+                Some(cast_slice_mut(&mut data.data))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn get_attribute_mut_unmarked<V: VertexAttribute>(
+        &mut self,
+        name: &str,
     ) -> Option<&mut [V]> {
         if let Some(data) = self.vertex_data.get_mut(name) {
             if V::format() == data.format {
@@ -112,6 +160,10 @@ impl Mesh {
         } else {
             None
         }
+    }
+
+    pub fn invalidate_vertex_buffer(&self, name: &str) {
+        self.vertex_buffers.lock().unwrap().remove(name);
     }
 
     pub fn create_vertex_buffer(&self, name: &String, render_resource: &RenderResource) {

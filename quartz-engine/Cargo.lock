@@ -14,9 +14,9 @@ checksum = "739f4a8db6605981345c5654f3a85b056ce52f37a39d34da03f25bf2151ea16e"
 
 [[package]]
 name = "ahash"
-version = "0.7.2"
+version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f200cbb1e856866d9eade941cf3aa0c5d7dd36f74311c4273b494f4ef036957"
+checksum = "11149c3eb723d15cb065a9ea5cc74ab57250f098ef33c9f6f7f39b48bd207750"
 dependencies = [
  "getrandom 0.2.3",
  "once_cell",
@@ -492,7 +492,7 @@ version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "80e2db640801230bdda80629bc3a063927a462f5eaf38a98da676954e78ccb99"
 dependencies = [
- "ahash 0.7.2",
+ "ahash 0.7.3",
  "atomic_refcell",
  "emath",
  "ordered-float",
@@ -830,9 +830,9 @@ dependencies = [
 
 [[package]]
 name = "gpu-alloc"
-version = "0.4.5"
+version = "0.4.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc76088804bb65a6f3b880bea9306fdaeffb25ebb453105fafa691282ee9fdba"
+checksum = "cbc1b6ca374e81862526786d9cb42357ce03706ed1b8761730caafd02ab91f3a"
 dependencies = [
  "bitflags",
  "gpu-alloc-types",
@@ -1242,9 +1242,9 @@ checksum = "af8b08b04175473088b46763e51ee54da5f9a164bc162f615b91bc179dbf15a3"
 
 [[package]]
 name = "ordered-float"
-version = "2.2.0"
+version = "2.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b50b8919aecb97e5ee9aceef27e24f39c46b11831130f4a6b7b091ec5de0de12"
+checksum = "76d99537dd7019c4dabfcf3898a43ee685412f76e6bee1ecc48785d730c1a275"
 dependencies = [
  "num-traits",
 ]
@@ -1363,18 +1363,27 @@ checksum = "c3a66d5e88679f2720126c11ee29da07a08f094eac52306b066edd7d393752d6"
 name = "quartz-engine"
 version = "0.1.0"
 dependencies = [
- "egui",
- "erased-serde",
- "libloading 0.7.0",
- "quartz-engine-builtins",
- "quartz-engine-derive",
- "quartz-render",
- "serde",
+ "quartz-engine-core",
 ]
 
 [[package]]
 name = "quartz-engine-builtins"
 version = "0.1.0"
+dependencies = [
+ "quartz-engine-core",
+]
+
+[[package]]
+name = "quartz-engine-core"
+version = "0.1.0"
+dependencies = [
+ "egui",
+ "erased-serde",
+ "libloading 0.7.0",
+ "quartz-engine-derive",
+ "quartz-render",
+ "serde",
+]
 
 [[package]]
 name = "quartz-engine-derive"
@@ -1388,6 +1397,7 @@ dependencies = [
 [[package]]
 name = "quartz-render"
 version = "0.1.0"
+source = "git+https://github.com/ChangeCaps/quartz?branch=main#1677f46c8c69a916a00762992b0e0f2dce42bce1"
 dependencies = [
  "anyhow",
  "bytemuck",
