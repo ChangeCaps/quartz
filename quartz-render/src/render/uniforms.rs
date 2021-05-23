@@ -22,13 +22,57 @@ where
     }
 }
 
-pub struct UniformBuffer<T: Uniform, const L: u64> {
+pub struct UniformBuffer<T: Uniform, const L: u32> {
     uniforms: Vec<T>,
 }
 
-impl<T: Uniform, const L: u64> Uniform for UniformBuffer<T, L> {
+impl<T: Uniform, const L: u32> std::ops::Index<u32> for UniformBuffer<T, L> {
+    type Output = T;
+
+    fn index(&self, index: u32) -> &T {
+        &self.uniforms[index as usize]
+    }
+}
+
+impl<T: Uniform, const L: u32> std::ops::IndexMut<u32> for UniformBuffer<T, L> {
+    fn index_mut(&mut self, index: u32) -> &mut T {
+        &mut self.uniforms[index as usize]
+    }
+}
+
+impl<T: Uniform, const L: u32> UniformBuffer<T, L> {
+    pub fn new() -> Self {
+        Self {
+            uniforms: Vec::with_capacity(L as usize),
+        }
+    }
+
+    pub fn push(&mut self, uniform: T) -> Result<(), ()> {
+        if self.uniforms.len() < L as usize {
+            self.uniforms.push(uniform);
+
+            Ok(())
+        } else {
+            Err(())
+        }
+    }
+
+    pub fn pop(&mut self) -> Option<T> {
+        self.uniforms.pop()
+    }
+
+    pub fn remove(&mut self, index: u32) -> T {
+        self.uniforms.remove(index as usize)
+    }
+
+    pub fn len(&self) -> u32 {
+        self.uniforms.len() as u32
+    }
+}
+
+impl<T: Uniform, const L: u32> Uniform for UniformBuffer<T, L> {
     fn size() -> u64 {
-        T::size() * L + 4
+        T::size() * L as u64 + 4
     }
 
     fn data(&self) -> Vec<u8> {

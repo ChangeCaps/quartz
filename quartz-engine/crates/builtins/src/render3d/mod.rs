@@ -5,7 +5,7 @@ mod quartz_engine {
     pub use quartz_engine_core as core;
 }
 
-pub const MAX_LIGHTS: usize = 64;
+pub const MAX_LIGHTS: u64 = 64;
 
 pub fn register_types(types: &mut Types) {
     types.register_plugin::<Render3dPlugin>();
@@ -16,6 +16,7 @@ pub fn register_types(types: &mut Types) {
 pub struct Render3dPlugin {
     pub pbr_pipeline: RenderPipeline,
     pub main_camera: Option<Mat4>,
+    pub lights: UniformBuffer<Vec3, MAX_LIGHTS>,
 }
 
 impl Plugin for Render3dPlugin {
@@ -31,6 +32,7 @@ impl Plugin for Render3dPlugin {
         Self {
             pbr_pipeline,
             main_camera: None,
+            lights: UniformBuffer::new(),
         }
     }
 
