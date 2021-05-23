@@ -105,13 +105,24 @@ impl GameState {
     }
 
     pub fn render(&mut self, render_resource: &RenderResource) {
+        if self.depth_texture.dimensions.width != render_resource.target_width()
+            || self.depth_texture.dimensions.height != render_resource.target_height()
+        {
+            self.depth_texture = Texture::new(
+                &TextureDescriptor::default_settings(D2::new(
+                    render_resource.target_width(),
+                    render_resource.target_height(),
+                )),
+                render_resource,
+            );
+        }
+
         render_resource
             .render(|render_ctx| {
                 let desc = RenderPassDescriptor {
-                    depth_attachment: Some(DepthAttachment {
-                        texture: self.depth_texture.view(),
-                        ..Default::default()
-                    }),
+                    depth_attachment: Some(DepthAttachment::default_settings(
+                        self.depth_texture.view(),
+                    )),
                     ..Default::default()
                 };
                 let mut render_pass = render_ctx.render_pass_empty(&desc);

@@ -59,7 +59,7 @@ impl GameState {
         post.bind("test_sampler", sampler);
         post.bind("test_tex", texture.view());
 
-        post.bind("Color", UniformBuffer::new(Vec4::new(0.5, 0.2, 0.6, 1.0)));
+        post.bind_uniform("Color", Vec4::new(0.5, 0.2, 0.6, 1.0));
 
         let mut mesh = Mesh::new();
         mesh.set_attribute(

@@ -529,17 +529,17 @@ impl<C: TextureFormat, D: TextureFormat> RenderPipeline<C, D> {
         let ident = ident.into();
 
         if let Some(binding) = bindings.get_mut(&ident) {
-            if let Some(uniform_buffer) = downcast_mut::<UniformBuffer>(binding.as_mut()) {
+            if let Some(uniform_buffer) = downcast_mut::<UniformBinding>(binding.as_mut()) {
                 uniform_buffer.set_uniform(uniform);
 
                 self.bindings_changed.store(true, Ordering::SeqCst);
             } else {
                 drop(bindings);
-                self.bind(ident, UniformBuffer::new(uniform));
+                self.bind(ident, UniformBinding::new(uniform));
             }
         } else {
             drop(bindings);
-            self.bind(ident, UniformBuffer::new(uniform));
+            self.bind(ident, UniformBinding::new(uniform));
         }
     }
 

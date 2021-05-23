@@ -3,65 +3,73 @@ use bytemuck::*;
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
 
-pub trait UniformClone {
-    fn box_clone(&self) -> Box<dyn Uniform>;
-}
+pub trait Uniform {
+    fn size() -> wgpu::BufferAddress;
 
-impl<T: Clone + Uniform> UniformClone for T {
-    fn box_clone(&self) -> Box<dyn Uniform> {
-        Box::new(self.clone())
-    }
-}
-
-pub trait Uniform: 'static + UniformClone {
-    fn size(&self) -> wgpu::BufferAddress;
-
-    fn data(&self) -> &[u8];
-}
-
-impl Clone for Box<dyn Uniform> {
-    fn clone(&self) -> Self {
-        self.box_clone()
-    }
+    fn data(&self) -> Vec<u8>;
 }
 
 impl<T> Uniform for T
 where
     T: Pod,
 {
-    fn size(&self) -> wgpu::BufferAddress {
+    fn size() -> wgpu::BufferAddress {
         std::mem::size_of::<Self>() as u64
     }
 
-    fn data(&self) -> &[u8] {
-        bytes_of(self)
+    fn data(&self) -> Vec<u8> {
+        bytes_of(self).to_vec()
+    }
+}
+
+pub struct UniformBuffer<T: Uniform, const L: usize> {
+    uniforms: Vec<T>,
+}
+
+impl<T: Uniform, const L: usize> Uniform for UniformBuffer<T, L> {
+    fn size() -> u64 {
+        T::size() * L as u64 + 4
+    }
+
+    fn data(&self) -> Vec<u8> {
+        let mut data = Vec::with_capacity(Self::size() as usize);
+
+        data.append(&mut bytes_of(&(L as u32)).to_vec());
+
+        for uniform in &self.uniforms {
+            data.append(&mut uniform.data());
+        }
+
+        let remaining_bytes = Self::size() as usize - data.len();
+
+        data.append(&mut vec![0; remaining_bytes]);
+
+        data
     }
 }
 
 #[derive(Clone)]
-pub struct UniformBuffer {
-    pub uniform: Box<dyn Uniform>,
+pub struct UniformBinding {
+    pub data: Vec<u8>,
     pub updated: bool,
     pub(crate) buffer: Option<Arc<wgpu::Buffer>>,
 }
 
-impl UniformBuffer {
+impl UniformBinding {
     pub fn new<T: Uniform>(uniform: T) -> Self {
-        let uniform = Box::new(uniform);
-
         Self {
-            uniform,
+            data: uniform.data(),
             updated: false,
             buffer: None,
         }
     }
 
     pub fn set_uniform<T: Uniform>(&mut self, uniform: T) {
-        if uniform.size() == self.uniform.size() {
-            self.uniform = Box::new(uniform);
+        self.data = uniform.data();
+
+        if T::size() == self.data.len() as u64 {
             self.updated = true;
         } else {
-            self.uniform = Box::new(uniform);
             self.buffer = None;
         }
     }
@@ -71,7 +79,7 @@ impl UniformBuffer {
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Uniform Buffer"),
-                contents: self.uniform.data(),
+                contents: &self.data,
                 usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
             });
 
@@ -79,7 +87,7 @@ impl UniformBuffer {
     }
 }
 
-impl Binding for UniformBuffer {
+impl Binding for UniformBinding {
     fn prepare_resource(&mut self, render_resource: &RenderResource) {
         if self.buffer.is_none() {
             self.create_buffer(render_resource);
@@ -89,7 +97,7 @@ impl Binding for UniformBuffer {
             render_resource.queue.write_buffer(
                 self.buffer.as_ref().unwrap(),
                 0,
-                self.uniform.data(),
+                &self.data,
             );
 
             self.updated = false;
@@ -102,7 +110,7 @@ impl Binding for UniformBuffer {
 
     fn binding_clone(&self) -> Box<dyn Binding> {
         Box::new(Self {
-            uniform: self.uniform.clone(),
+            data: self.data.clone(),
             updated: false,
             buffer: None,
         })

@@ -1538,7 +1538,7 @@ dependencies = [
 [[package]]
 name = "quartz-render"
 version = "0.1.0"
-source = "git+https://github.com/ChangeCaps/quartz?branch=main#65bc0135101c98dd2383752e63be3229e846abaa"
+source = "git+https://github.com/ChangeCaps/quartz?branch=main#534399dd912d76f42bf19dcd2793c96458b0f654"
 dependencies = [
  "anyhow",
  "bytemuck",
