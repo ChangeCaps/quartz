@@ -4,6 +4,8 @@ use bytemuck::*;
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
 
+pub use quartz_render_derive::Uniform;
+
 pub trait Uniform {
     fn alignment() -> wgpu::BufferAddress;
 
@@ -12,11 +14,11 @@ pub trait Uniform {
     fn data(&self) -> Vec<u8>;
 }
 
-const fn aligned_size(size: wgpu::BufferAddress, alignment: wgpu::BufferAddress) -> u64 {
+pub const fn aligned_size(size: wgpu::BufferAddress, alignment: wgpu::BufferAddress) -> u64 {
     ((size - 1) / alignment + 1) * alignment
 }
 
-fn append_aligned<T: Uniform>(data: &mut Vec<u8>, uniform: &T, alignment: wgpu::BufferAddress) {
+pub fn append_aligned<T: Uniform>(data: &mut Vec<u8>, uniform: &T, alignment: wgpu::BufferAddress) {
     data.append(&mut uniform.data());
 
     let remaining_bytes = aligned_size(data.len() as u64, alignment) as usize - data.len();

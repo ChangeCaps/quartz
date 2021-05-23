@@ -8,7 +8,7 @@ pub mod sampler;
 pub mod shader;
 pub mod texture;
 pub mod texture_format;
-pub mod uniforms;
+pub mod uniform;
 pub mod vertex;
 
 pub use format::TextureFormat;
@@ -22,5 +22,5 @@ pub use sampler::*;
 pub use shader::*;
 pub use texture::*;
 pub use texture_format as format;
-pub use uniforms::*;
+pub use uniform::*;
 pub use vertex::*;
