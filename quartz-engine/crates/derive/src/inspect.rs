@@ -9,6 +9,7 @@ use syn::{
 #[derive(Default)]
 struct InspectFieldAttributes {
     pub ignore: bool,
+    pub collapsing: bool,
 }
 
 impl InspectFieldAttributes {
@@ -18,11 +19,16 @@ impl InspectFieldAttributes {
             .find(|a| *a.path.get_ident().as_ref().unwrap() == INSPECT_ATTRIBUTE_NAME)
             .map_or_else(Self::default, |a| {
                 syn::custom_keyword!(ignore);
+                syn::custom_keyword!(collapsing);
                 let mut attributes = Self::default();
 
                 a.parse_args_with(|input: ParseStream| {
                     if input.parse::<Option<ignore>>()?.is_some() {
                         attributes.ignore = true;
+                    }
+
+                    if input.parse::<Option<collapsing>>()?.is_some() {
+                        attributes.collapsing = true;
                     }
 
                     Ok(())
@@ -82,12 +88,20 @@ fn inspect(data: &Data) -> TokenStream {
                         let ident = f.ident.as_ref().unwrap();
                         let name = ident.to_string();
 
-                        Some(quote_spanned! {f.ty.span()=>
-                            ui.label(#name);
-                            ui.indent(#name, |ui| {
-                                mutated |= self.#ident.inspect(ui);
-                            });
-                        })
+                        if attributes.collapsing {
+                            Some(quote_spanned! {f.ty.span()=>
+                                ui.collapsing(#name, |ui| {
+                                    mutated |= self.#ident.inspect(ui);
+                                });
+                            })
+                        } else {
+                            Some(quote_spanned! {f.ty.span()=>
+                                ui.label(#name);
+                                ui.indent(#name, |ui| {
+                                    mutated |= self.#ident.inspect(ui);
+                                });
+                            })
+                        }
                     }
                 });
 

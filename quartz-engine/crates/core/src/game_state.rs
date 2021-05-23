@@ -8,6 +8,7 @@ pub struct GameState {
     pub tree: Tree,
     pub plugins: Plugins,
     pub components: Components,
+    pub depth_texture: Texture2d<format::Depth32Float>,
 }
 
 impl GameState {
@@ -15,12 +16,21 @@ impl GameState {
         tree: Tree,
         plugins: Plugins,
         components: Components,
-        _render_resource: &RenderResource,
+        render_resource: &RenderResource,
     ) -> Self {
+        let depth_texture = Texture::new(
+            &TextureDescriptor::default_settings(D2::new(
+                render_resource.target_width(),
+                render_resource.target_height(),
+            )),
+            render_resource,
+        );
+
         Self {
             tree,
             plugins,
             components,
+            depth_texture,
         }
     }
 
@@ -97,7 +107,13 @@ impl GameState {
     pub fn render(&mut self, render_resource: &RenderResource) {
         render_resource
             .render(|render_ctx| {
-                let desc = Default::default();
+                let desc = RenderPassDescriptor {
+                    depth_attachment: Some(DepthAttachment {
+                        texture: TextureAttachment::Texture(self.depth_texture.view()),
+                        
+                    }),
+                    ..Default::default()
+                };
                 let mut render_pass = render_ctx.render_pass_empty(&desc);
 
                 let plugin_ctx = PluginRenderCtx {

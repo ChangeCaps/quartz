@@ -39,7 +39,7 @@ impl Plugin for Render3dPlugin {
 
         // generate shadow_map
 
-        todo!();
+        //todo!();
     }
 }
 
@@ -70,6 +70,7 @@ impl Component for Camera3d {
 
 #[derive(Reflect, Inspect)]
 pub struct Mesh3d {
+    #[inspect(collapsing)]
     pub mesh: Mesh,
 }
 
