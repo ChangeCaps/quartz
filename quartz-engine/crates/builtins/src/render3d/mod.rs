@@ -9,6 +9,7 @@ pub const MAX_LIGHTS: u32 = 64;
 
 pub fn register_types(types: &mut Types) {
     types.register_plugin::<Render3dPlugin>();
+    types.register_component::<Light3d>();
     types.register_component::<Camera3d>();
     types.register_component::<Mesh3d>();
 }
@@ -36,7 +37,11 @@ impl Plugin for Render3dPlugin {
         }
     }
 
-    fn update(&mut self, _ctx: PluginCtx) {
+    fn update(&mut self, ctx: PluginCtx) {
+        self.editor_update(ctx);
+    }
+    
+    fn editor_update(&mut self, _ctx: PluginCtx) {
         self.lights.clear();
     }
 
@@ -48,6 +53,27 @@ impl Plugin for Render3dPlugin {
         // generate shadow_map
 
         //todo!();
+    }
+}
+
+#[derive(Default, Reflect, Inspect)]
+pub struct Light3d {
+
+}
+
+impl Component for Light3d {
+    type Plugins = Render3dPlugin;
+
+    fn inspector_ui(&mut self, _: &mut Render3dPlugin, _: ComponentCtx, ui: &mut Ui) {
+        self.inspect(ui);
+    }
+
+    fn update(&mut self, render: &mut Render3dPlugin, ctx: ComponentCtx) {
+        self.editor_update(render, ctx);
+    }
+
+    fn editor_update(&mut self, render: &mut Render3dPlugin, ctx: ComponentCtx) {
+        render.lights.push(ctx.global_transform.translation).expect("MAX_LIGHTS exceeded");
     }
 }
 

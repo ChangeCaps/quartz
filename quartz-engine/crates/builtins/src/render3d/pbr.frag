@@ -16,7 +16,12 @@ void main() {
     vec3 color = vec3(1.0);
 
     float light = 0.0;
-    light += 0.5 + 0.5 * max(dot(v_world_normal, vec3(0.0, 1.0, 0.0)), 0.0);
+    
+    for (int i = 0; i < num_lights; i++) {
+        vec3 direction = normalize(lights[i] - v_world_position);
+
+        light += max(dot(v_world_normal, direction), 0.0);
+    }
 
     color *= light;
 

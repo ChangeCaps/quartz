@@ -1,4 +1,5 @@
 use crate::render::*;
+use glam::*;
 use bytemuck::*;
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
@@ -7,19 +8,6 @@ pub trait Uniform {
     fn size() -> wgpu::BufferAddress;
 
     fn data(&self) -> Vec<u8>;
-}
-
-impl<T> Uniform for T
-where
-    T: Pod,
-{
-    fn size() -> wgpu::BufferAddress {
-        std::mem::size_of::<Self>() as u64
-    }
-
-    fn data(&self) -> Vec<u8> {
-        bytes_of(self).to_vec()
-    }
 }
 
 pub struct UniformBuffer<T: Uniform, const L: u32> {
@@ -179,5 +167,75 @@ impl Binding for UniformBinding {
             updated: false,
             buffer: None,
         })
+    }
+}
+
+impl Uniform for f32 {
+    fn size() -> wgpu::BufferAddress {
+        4
+    }
+
+    fn data(&self) -> Vec<u8> {
+        bytes_of(self).to_vec()
+    }
+}
+
+impl Uniform for u32 {
+    fn size() -> wgpu::BufferAddress {
+        4
+    }
+
+    fn data(&self) -> Vec<u8> {
+        bytes_of(self).to_vec()
+    }
+}
+
+impl Uniform for i32 {
+    fn size() -> wgpu::BufferAddress {
+        4
+    }
+
+    fn data(&self) -> Vec<u8> {
+        bytes_of(self).to_vec()
+    }
+}
+
+impl Uniform for Vec2 {
+    fn size() -> wgpu::BufferAddress {
+        8
+    }
+
+    fn data(&self) -> Vec<u8> {
+        bytes_of(self).to_vec()
+    }
+}
+
+impl Uniform for Vec3 {
+    fn size() -> wgpu::BufferAddress {
+        16
+    }
+
+    fn data(&self) -> Vec<u8> {
+        bytes_of(&self.extend(0.0)).to_vec()
+    }
+}
+
+impl Uniform for Vec4 {
+    fn size() -> wgpu::BufferAddress {
+        16
+    }
+
+    fn data(&self) -> Vec<u8> {
+        bytes_of(self).to_vec()
+    }
+}
+
+impl Uniform for Mat4 {
+    fn size() -> wgpu::BufferAddress {
+        64
+    }
+
+    fn data(&self) -> Vec<u8> {
+        bytes_of(self).to_vec()
     }
 }
