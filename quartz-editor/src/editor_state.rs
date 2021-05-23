@@ -79,7 +79,10 @@ impl EditorState {
         )
         .unwrap();
         let egui_pipeline = RenderPipeline::new(
-            PipelineDescriptor::default_settings(egui_shader),
+            PipelineDescriptor {
+                depth_stencil: None,
+                ..PipelineDescriptor::default_settings(egui_shader)
+            },
             render_resource,
         )
         .unwrap();
@@ -120,7 +123,7 @@ impl EditorState {
 
         let child = std::process::Command::new("cargo")
             .arg("build")
-            .arg("--release")
+            //.arg("--release")
             .arg("--manifest-path")
             .arg(&self.project.path.join("Cargo.toml"))
             .spawn()?;
@@ -193,12 +196,12 @@ impl EditorState {
 
                 GameState::deserialize(
                     &mut deserializer,
-                    &self.project.path.join("target/release/testproject.dll"),
+                    &self.project.path.join("target/debug/testproject.dll"),
                     render_resource,
                 )
             } else {
                 GameState::load(
-                    &self.project.path.join("target/release/testproject.dll"),
+                    &self.project.path.join("target/debug/testproject.dll"),
                     render_resource,
                 )
             };

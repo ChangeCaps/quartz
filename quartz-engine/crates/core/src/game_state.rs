@@ -109,8 +109,8 @@ impl GameState {
             .render(|render_ctx| {
                 let desc = RenderPassDescriptor {
                     depth_attachment: Some(DepthAttachment {
-                        texture: TextureAttachment::Texture(self.depth_texture.view()),
-                        
+                        texture: self.depth_texture.view(),
+                        ..Default::default()
                     }),
                     ..Default::default()
                 };
