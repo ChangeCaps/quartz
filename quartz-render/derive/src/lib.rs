@@ -12,14 +12,16 @@ fn crate_path() -> proc_macro2::TokenStream {
                 quote::quote!(#ident)
             }
         }
-    } else {
-        match crate_name("quartz-engine").unwrap() {
-            FoundCrate::Itself => quote::quote!(crate),
+    } else if let Ok(found) = crate_name("quartz-engine") {
+        match found {
+            FoundCrate::Itself => quote::quote!(crate::render),
             FoundCrate::Name(name) => {
                 let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
                 quote::quote!(#ident::render)
             }
         }
+    } else {
+        quote::quote!(quartz_render)
     }
 }
 
