@@ -12,10 +12,14 @@ pub trait Uniform {
     fn data(&self) -> Vec<u8>;
 }
 
+const fn aligned_size(size: wgpu::BufferAddress, alignment: wgpu::BufferAddress) -> u64 {
+    ((size - 1) / alignment + 1) * alignment
+}
+
 fn append_aligned<T: Uniform>(data: &mut Vec<u8>, uniform: &T, alignment: wgpu::BufferAddress) {
     data.append(&mut uniform.data());
 
-    let remaining_bytes = ((data.len() - 1) / alignment as usize + 1) * alignment as usize - data.len();
+    let remaining_bytes = aligned_size(data.len() as u64, alignment) as usize - data.len();
 
     data.append(&mut vec![0; remaining_bytes]);
 }
@@ -95,7 +99,7 @@ impl<T: Uniform, const L: u32> Uniform for UniformBuffer<T, L> {
     }
 
     fn size() -> u64 {
-        ((T::size() * L as u64 - 1) / 16 + 1) * 16 + 16
+        aligned_size(T::size(), Self::alignment()) * L as u64 + 16
     }
 
     fn data(&self) -> Vec<u8> {
