@@ -36,6 +36,10 @@ impl Plugin for Render3dPlugin {
         }
     }
 
+    fn update(&mut self, _ctx: PluginCtx) {
+        self.lights.clear();
+    }
+
     fn render(&mut self, ctx: PluginRenderCtx) {
         // get lights
 
@@ -101,9 +105,9 @@ impl Component for Mesh3d {
         if let Some(view_proj) = &render.main_camera {
             let model = ctx.global_transform.matrix();
 
-            render.pbr_pipeline.bind_uniform("Transform", model);
-            render.pbr_pipeline.bind_uniform("Camera", *view_proj);
-            render.pbr_pipeline.bind_uniform("Lights", render.lights);
+            render.pbr_pipeline.bind_uniform("Transform", &model);
+            render.pbr_pipeline.bind_uniform("Camera", view_proj);
+            render.pbr_pipeline.bind_uniform("Lights", &render.lights);
 
             ctx.render_pass
                 .with_pipeline(&render.pbr_pipeline)

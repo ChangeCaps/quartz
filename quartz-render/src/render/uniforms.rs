@@ -40,6 +40,15 @@ impl<T: Uniform, const L: u32> std::ops::IndexMut<u32> for UniformBuffer<T, L> {
     }
 }
 
+impl<T: Uniform, const L: u32> IntoIterator for UniformBuffer<T, L> {
+    type Item = T;
+    type IntoIter = std::vec::IntoIter<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.uniforms.into_iter()
+    }
+}
+
 impl<T: Uniform, const L: u32> UniformBuffer<T, L> {
     pub fn new() -> Self {
         Self {
@@ -67,6 +76,18 @@ impl<T: Uniform, const L: u32> UniformBuffer<T, L> {
 
     pub fn len(&self) -> u32 {
         self.uniforms.len() as u32
+    }
+
+    pub fn clear(&mut self) {
+        self.uniforms.drain(..);
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        self.uniforms.iter()
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
+        self.uniforms.iter_mut()
     }
 }
 

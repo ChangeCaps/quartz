@@ -408,7 +408,7 @@ impl State for EditorState {
             .screen_rect
             .unwrap_or(Rect::from_min_size(Default::default(), egui::Vec2::ZERO));
         let screen_size = Vec2::new(size.width(), size.height());
-        self.egui_pipeline.bind_uniform("ScreenSize", screen_size);
+        self.egui_pipeline.bind_uniform("ScreenSize", &screen_size);
 
         self.egui_ctx.begin_frame(self.egui_raw_input.take());
 
@@ -470,7 +470,7 @@ impl State for EditorState {
                 for ClippedMesh(rect, mesh) in &clipped_meshes {
                     // TODO: use scissor rect
                     let clip_rect = Vec4::new(rect.min.x, rect.min.y, rect.max.x, rect.max.y);
-                    self.egui_pipeline.bind_uniform("ClipRect", clip_rect);
+                    self.egui_pipeline.bind_uniform("ClipRect", &clip_rect);
 
                     match &mesh.texture_id {
                         TextureId::Egui => self.egui_pipeline.bind("tex", self.egui_texture.view()),
