@@ -246,6 +246,20 @@ impl Uniform for Vec3 {
     }
 }
 
+impl Uniform for crate::color::Color {
+    fn alignment() -> wgpu::BufferAddress {
+        16
+    }
+
+    fn size() -> wgpu::BufferAddress {
+        16
+    }
+
+    fn data(&self) -> Vec<u8> {
+        bytes_of(self).to_vec()
+    }
+}
+
 impl Uniform for Vec4 {
     fn alignment() -> wgpu::BufferAddress {
         16
