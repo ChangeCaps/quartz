@@ -101,7 +101,7 @@ impl<T: Uniform, const L: u32> Uniform for UniformBuffer<T, L> {
     fn data(&self) -> Vec<u8> {
         let mut data = Vec::with_capacity(Self::size() as usize);
 
-        let len = data.len() as u32;
+        let len = self.uniforms.len() as u32;
         append_aligned(&mut data, &len, 16);
 
         for uniform in &self.uniforms {
