@@ -2,9 +2,7 @@ use quartz_engine::egui::*;
 use quartz_engine::prelude::*;
 
 #[derive(Reflect, Inspect, Default)]
-pub struct Terrain {
-
-}
+pub struct Terrain {}
 
 impl Terrain {
     pub fn generate(&self, ctx: ComponentCtx) {
@@ -16,7 +14,7 @@ impl Terrain {
 
                 let mut positions = Vec::new();
                 let mut indices = Vec::new();
-                
+
                 for x in -20..20 {
                     for z in -20..20 {
                         let mut pos = Vec3::new(x as f32, 0.0, z as f32);
@@ -49,7 +47,7 @@ impl Terrain {
                     let v0 = positions[i0 as usize];
                     let v1 = positions[i1 as usize];
                     let v2 = positions[i2 as usize];
-                
+
                     let normal = (v1 - v0).cross(v2 - v0);
 
                     normals[i0 as usize] += normal;
