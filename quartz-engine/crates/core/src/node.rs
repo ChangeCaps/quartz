@@ -63,6 +63,7 @@ impl Node {
             let ctx = ComponentCtx {
                 tree,
                 node_id,
+                plugins,
                 transform: &mut self.transform,
                 global_transform: &self.global_transform,
                 render_resource,
@@ -82,6 +83,7 @@ impl Node {
         let ctx = ComponentCtx {
             tree,
             node_id,
+            plugins,
             transform: &mut self.transform,
             global_transform: &self.global_transform,
             render_resource,
@@ -100,6 +102,7 @@ impl Node {
         let ctx = ComponentCtx {
             tree,
             node_id,
+            plugins,
             transform: &mut self.transform,
             global_transform: &self.global_transform,
             render_resource,
@@ -120,6 +123,7 @@ impl Node {
             render_resource,
             node_id,
             tree,
+            plugins,
             transform: &mut self.transform,
             global_transform: &self.global_transform,
             render_pass,
@@ -138,6 +142,7 @@ impl Node {
         let ctx = ComponentCtx {
             tree,
             node_id,
+            plugins,
             transform: &mut self.transform,
             global_transform: &self.global_transform,
             render_resource,

@@ -27,6 +27,7 @@ impl GameState {
     pub fn start(&mut self, render_resource: &RenderResource) {
         let plugin_ctx = PluginCtx {
             tree: &mut self.tree,
+            plugins: &self.plugins,
             render_resource,
         };
 
@@ -36,6 +37,7 @@ impl GameState {
     pub fn editor_start(&mut self, render_resource: &RenderResource) {
         let plugin_ctx = PluginCtx {
             tree: &mut self.tree,
+            plugins: &self.plugins,
             render_resource,
         };
 
@@ -47,6 +49,7 @@ impl GameState {
 
         let plugin_ctx = PluginCtx {
             tree: &mut self.tree,
+            plugins: &self.plugins,
             render_resource,
         };
 
@@ -71,6 +74,7 @@ impl GameState {
 
         let plugin_ctx = PluginCtx {
             tree: &mut self.tree,
+            plugins: &self.plugins,
             render_resource,
         };
 
@@ -95,6 +99,15 @@ impl GameState {
             .render(|render_ctx| {
                 let desc = Default::default();
                 let mut render_pass = render_ctx.render_pass_empty(&desc);
+
+                let plugin_ctx = PluginRenderCtx {
+                    tree: &mut self.tree,
+                    plugins: &self.plugins,
+                    render_resource: render_resource,
+                    render_pass: &mut render_pass,
+                };
+
+                self.plugins.render(plugin_ctx);
 
                 self.tree
                     .render(&self.plugins, render_resource, &mut render_pass);

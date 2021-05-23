@@ -10,6 +10,7 @@ use std::collections::HashMap;
 pub struct ComponentCtx<'a> {
     //pub global_transform: &'a Transform,
     pub tree: &'a mut Tree,
+    pub plugins: &'a Plugins,
     pub node_id: &'a NodeId,
     pub transform: &'a mut Transform,
     pub global_transform: &'a Transform,
@@ -20,6 +21,7 @@ pub struct ComponentRenderCtx<'a, 'b, 'c> {
     //pub global_transform: &'a Transform,
     pub render_resource: &'a RenderResource,
     pub tree: &'a Tree,
+    pub plugins: &'a Plugins,
     pub node_id: &'a NodeId,
     pub transform: &'a Transform,
     pub global_transform: &'a Transform,

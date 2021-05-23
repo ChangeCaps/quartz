@@ -31,6 +31,16 @@ impl Plugin for Render3dPlugin {
             main_camera: None,
         }
     }
+
+    fn render(&mut self, ctx: PluginRenderCtx) {
+        // get lights
+
+        // generate shadow_texture
+
+        // generate shadow_map
+
+        todo!();
+    }
 }
 
 #[derive(Default, Reflect, Inspect)]

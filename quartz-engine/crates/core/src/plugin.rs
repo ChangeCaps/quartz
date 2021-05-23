@@ -4,18 +4,55 @@ use quartz_render::prelude::*;
 use std::any::{Any, TypeId};
 use std::cell::UnsafeCell;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
+
+pub struct PluginGuard<'a, P: Plugin> {
+    taken: Arc<AtomicBool>,
+    plugin: &'a mut P,
+}
+
+impl<'a, P: Plugin> std::ops::Deref for PluginGuard<'a, P> {
+    type Target = P;
+
+    fn deref(&self) -> &Self::Target {
+        self.plugin
+    }
+}
+
+impl<'a, P: Plugin> std::ops::DerefMut for PluginGuard<'a, P> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.plugin
+    }
+}
+
+impl<'a, P: Plugin> Drop for PluginGuard<'a, P> {
+    fn drop(&mut self) {
+        self.taken.store(false, Ordering::SeqCst);
+    }
+}
 
 struct PluginContainer {
-    taken: AtomicBool,
+    taken: Arc<AtomicBool>,
     plugin: UnsafeCell<Box<dyn Plugin>>,
 }
 
 impl PluginContainer {
     pub fn new(plugin: Box<dyn Plugin>) -> Self {
         Self {
-            taken: AtomicBool::new(false),
+            taken: Arc::new(AtomicBool::new(false)),
             plugin: UnsafeCell::new(plugin),
+        }
+    }
+
+    pub fn get(&self) -> Option<&dyn Plugin> {
+        if self.taken.load(Ordering::SeqCst) {
+            None
+        } else {
+            // SAFETY: only accessed when not taken
+            Some(unsafe { &*self.plugin.get() }.as_ref())
         }
     }
 
@@ -23,12 +60,18 @@ impl PluginContainer {
         self.plugin.get_mut().as_mut()
     }
 
-    pub fn _get(&self) -> Option<&dyn Plugin> {
-        if self.taken.load(Ordering::SeqCst) {
-            None
+    pub fn lock<'a, P: Plugin>(&'a self) -> Option<PluginGuard<'a, P>> {
+        if let Some(plugin) = self.take() {
+            if let Some(plugin) = plugin.as_any_mut().downcast_mut() {
+                Some(PluginGuard {
+                    taken: self.taken.clone(),
+                    plugin,
+                })
+            } else {
+                None
+            }
         } else {
-            // SAFETY: only accessed when not taken
-            Some(unsafe { &*self.plugin.get() }.as_ref())
+            None
         }
     }
 
@@ -58,47 +101,121 @@ impl Plugins {
         }
     }
 
-    pub fn start(&mut self, ctx: PluginCtx) {
-        for plugin in self.plugins.values_mut() {
+    pub fn start(&self, ctx: PluginCtx) {
+        for id in self.plugins.keys() {
             let ctx = PluginCtx {
                 tree: ctx.tree,
+                plugins: ctx.plugins,
                 render_resource: ctx.render_resource,
             };
 
-            plugin.get_mut().start(ctx);
+            self.get_mut_dyn(id, |plugin| {
+                plugin.start(ctx);
+            });
         }
     }
 
-    pub fn editor_start(&mut self, ctx: PluginCtx) {
-        for plugin in self.plugins.values_mut() {
+    pub fn editor_start(&self, ctx: PluginCtx) {
+        for id in self.plugins.keys() {
             let ctx = PluginCtx {
                 tree: ctx.tree,
+                plugins: ctx.plugins,
                 render_resource: ctx.render_resource,
             };
 
-            plugin.get_mut().editor_start(ctx);
+            self.get_mut_dyn(id, |plugin| {
+                plugin.editor_start(ctx);
+            });
         }
     }
 
-    pub fn update(&mut self, ctx: PluginCtx) {
-        for plugin in self.plugins.values_mut() {
+    pub fn update(&self, ctx: PluginCtx) {
+        for id in self.plugins.keys() {
             let ctx = PluginCtx {
                 tree: ctx.tree,
+                plugins: ctx.plugins,
                 render_resource: ctx.render_resource,
             };
 
-            plugin.get_mut().update(ctx);
+            self.get_mut_dyn(id, |plugin| {
+                plugin.update(ctx);
+            });
         }
     }
 
-    pub fn editor_update(&mut self, ctx: PluginCtx) {
-        for plugin in self.plugins.values_mut() {
+    pub fn editor_update(&self, ctx: PluginCtx) {
+        for id in self.plugins.keys() {
             let ctx = PluginCtx {
                 tree: ctx.tree,
+                plugins: ctx.plugins,
                 render_resource: ctx.render_resource,
             };
 
-            plugin.get_mut().editor_update(ctx);
+            self.get_mut_dyn(id, |plugin| {
+                plugin.editor_update(ctx);
+            });
+        }
+    }
+
+    pub fn render(&self, ctx: PluginRenderCtx) {
+        for id in self.plugins.keys() {
+            let ctx = PluginRenderCtx {
+                tree: ctx.tree,
+                plugins: ctx.plugins,
+                render_resource: ctx.render_resource,
+                render_pass: ctx.render_pass,
+            };
+
+            self.get_mut_dyn(id, |plugin| {
+                plugin.render(ctx);
+            });
+        }
+    }
+
+    pub fn viewport_render(&self, ctx: PluginRenderCtx) {
+        for id in self.plugins.keys() {
+            let ctx = PluginRenderCtx {
+                tree: ctx.tree,
+                plugins: ctx.plugins,
+                render_resource: ctx.render_resource,
+                render_pass: ctx.render_pass,
+            };
+
+            self.get_mut_dyn(id, |plugin| {
+                plugin.viewport_render(ctx);
+            });
+        }
+    }
+
+    pub fn get<P: Plugin>(&self) -> Option<&P> {
+        let id = TypeId::of::<P>();
+
+        if let Some(plugin) = self.plugins.get(&id) {
+            if let Some(plugin) = plugin.get() {
+                Some(plugin.as_any().downcast_ref().unwrap())
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn get_mut<P: Plugin>(&self) -> Option<PluginGuard<P>> {
+        if let Some(plugin) = self.plugins.get(&TypeId::of::<P>()) {
+            plugin.lock()
+        } else {
+            None
+        }
+    }
+
+    pub fn get_mut_dyn(&self, id: &TypeId, f: impl FnOnce(&mut dyn Plugin)) {
+        if let Some(plugin) = self.plugins.get(id) {
+            if let Some(plugin) = plugin.take() {
+                f(plugin);
+            }
+
+            unsafe { plugin.put() };
         }
     }
 
@@ -151,7 +268,15 @@ pub struct PluginInitCtx<'a> {
 
 pub struct PluginCtx<'a> {
     pub tree: &'a mut Tree,
+    pub plugins: &'a Plugins,
     pub render_resource: &'a RenderResource,
+}
+
+pub struct PluginRenderCtx<'a, 'b, 'c> {
+    pub tree: &'a mut Tree,
+    pub plugins: &'a Plugins,
+    pub render_resource: &'a RenderResource,
+    pub render_pass: &'a mut EmptyRenderPass<'b, 'c, format::TargetFormat, format::Depth32Float>,
 }
 
 #[allow(unused_variables)]
@@ -167,6 +292,12 @@ pub trait Plugin: PluginAny {
     fn update(&mut self, ctx: PluginCtx) {}
 
     fn editor_update(&mut self, ctx: PluginCtx) {}
+
+    fn render(&mut self, ctx: PluginRenderCtx) {}
+
+    fn viewport_render(&mut self, ctx: PluginRenderCtx) {
+        self.render(ctx);
+    }
 }
 
 pub trait PluginFetch<'a> {

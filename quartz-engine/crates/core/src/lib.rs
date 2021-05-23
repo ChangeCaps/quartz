@@ -29,7 +29,7 @@ pub mod prelude {
     pub use crate::component::{Component, ComponentCtx, ComponentRenderCtx};
     pub use crate::inspect::Inspect;
     pub use crate::node::*;
-    pub use crate::plugin::{Plugin, PluginCtx, PluginInitCtx, Plugins};
+    pub use crate::plugin::{Plugin, PluginCtx, PluginInitCtx, PluginRenderCtx, Plugins};
     pub use crate::reflect::Reflect;
     pub use crate::render::prelude::*;
     pub use crate::tree::Tree;
