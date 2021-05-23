@@ -524,7 +524,7 @@ impl<C: TextureFormat, D: TextureFormat> RenderPipeline<C, D> {
     }
 
     /// Binds a uniform.
-    pub fn bind_uniform(&self, ident: impl Into<String>, uniform: impl Uniform) {
+    pub fn bind_uniform(&self, ident: impl Into<String>, uniform: &impl Uniform) {
         let mut bindings = self.bindings.lock().unwrap();
         let ident = ident.into();
 

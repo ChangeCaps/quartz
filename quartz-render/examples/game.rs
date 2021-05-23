@@ -59,7 +59,7 @@ impl GameState {
         post.bind("test_sampler", sampler);
         post.bind("test_tex", texture.view());
 
-        post.bind_uniform("Color", Vec4::new(0.5, 0.2, 0.6, 1.0));
+        post.bind_uniform("Color", &Vec4::new(0.5, 0.2, 0.6, 1.0));
 
         let mut mesh = Mesh::new();
         mesh.set_attribute(
@@ -163,9 +163,9 @@ impl State for GameState {
                 mesh.set_indices(vec![0, 1, 2]);
 
                 self.main_image
-                    .bind_uniform("Transform", self.mesh_transform.matrix());
+                    .bind_uniform("Transform", &self.mesh_transform.matrix());
                 self.main_image
-                    .bind_uniform("CameraProj", self.camera.matrix());
+                    .bind_uniform("CameraProj", &self.camera.matrix());
                 ctx.render_pass(&desc, &self.main_image).draw_mesh(&mesh);
 
                 ctx.render_pass(&RenderPassDescriptor::default(), &self.post)

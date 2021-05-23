@@ -100,7 +100,7 @@ pub struct UniformBinding {
 }
 
 impl UniformBinding {
-    pub fn new<T: Uniform>(uniform: T) -> Self {
+    pub fn new<T: Uniform>(uniform: &T) -> Self {
         Self {
             data: uniform.data(),
             updated: false,
@@ -108,7 +108,7 @@ impl UniformBinding {
         }
     }
 
-    pub fn set_uniform<T: Uniform>(&mut self, uniform: T) {
+    pub fn set_uniform<T: Uniform>(&mut self, uniform: &T) {
         self.data = uniform.data();
 
         if T::size() == self.data.len() as u64 {
