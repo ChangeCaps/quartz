@@ -22,13 +22,13 @@ where
     }
 }
 
-pub struct UniformBuffer<T: Uniform, const L: usize> {
+pub struct UniformBuffer<T: Uniform, const L: u64> {
     uniforms: Vec<T>,
 }
 
-impl<T: Uniform, const L: usize> Uniform for UniformBuffer<T, L> {
+impl<T: Uniform, const L: u64> Uniform for UniformBuffer<T, L> {
     fn size() -> u64 {
-        T::size() * L as u64 + 4
+        T::size() * L + 4
     }
 
     fn data(&self) -> Vec<u8> {

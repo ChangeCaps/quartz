@@ -5,6 +5,8 @@ mod quartz_engine {
     pub use quartz_engine_core as core;
 }
 
+pub const MAX_LIGHTS: usize = 64;
+
 pub fn register_types(types: &mut Types) {
     types.register_plugin::<Render3dPlugin>();
     types.register_component::<Camera3d>();
