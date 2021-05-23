@@ -1,119 +1,88 @@
 use quartz_engine::egui::*;
 use quartz_engine::prelude::*;
 
-#[derive(Reflect, Inspect)]
-pub struct MeshComponent {
-    mesh: Mesh,
+#[derive(Reflect, Inspect, Default)]
+pub struct Terrain {
+
 }
 
-impl InitComponent for MeshComponent {
-    fn init(_render: &mut Render) -> Self {
-        let mut mesh = Mesh::new();
+impl Terrain {
+    pub fn generate(&self, ctx: ComponentCtx) {
+        for child in ctx.tree.get_children(ctx.node_id) {
+            let mut child = ctx.tree.get_node(child).unwrap();
 
-        mesh.add_attribute::<Vec3>("vertex_position");
+            if let Some(mesh) = child.get_component_mut::<Mesh3d>() {
+                println!("generating");
 
-        Self { mesh }
-    }
-}
+                let mut positions = Vec::new();
+                let mut indices = Vec::new();
+                
+                for x in -20..20 {
+                    for z in -20..20 {
+                        let mut pos = Vec3::new(x as f32, 0.0, z as f32);
+                        pos.y = pos.x * pos.z * 0.03;
 
-impl Component for MeshComponent {
-    type Plugins = Render;
+                        positions.push(pos);
+                    }
+                }
 
-    fn name() -> &'static str {
-        "Mesh"
-    }
+                for x in 0..39 {
+                    for z in 0..39 {
+                        let index = z * 40 + x;
 
-    fn inspector_ui(&mut self, _: &mut Render, _ctx: ComponentCtx, ui: &mut Ui) {
-        self.inspect(ui);
-    }
+                        indices.push(index);
+                        indices.push(index + 1);
+                        indices.push(index + 40);
+                        indices.push(index + 41);
+                        indices.push(index + 40);
+                        indices.push(index + 1);
+                    }
+                }
 
-    fn update(&mut self, _: &mut Render, ctx: ComponentCtx) {
-        ctx.transform.rotation *= Quat::from_rotation_y(0.01);
-    }
+                let mut normals = vec![Vec3::ZERO; positions.len()];
 
-    fn render(&mut self, render: &mut Render, ctx: ComponentRenderCtx) {
-        if let Some(view_proj) = render.camera {
-            render.pipeline.bind_uniform("ViewProj", view_proj);
-            render
-                .pipeline
-                .bind_uniform("Model", ctx.global_transform.matrix());
+                for tri in 0..indices.len() / 3 {
+                    let i0 = indices[tri * 3 + 0];
+                    let i1 = indices[tri * 3 + 1];
+                    let i2 = indices[tri * 3 + 2];
 
-            ctx.render_pass
-                .with_pipeline(&render.pipeline)
-                .draw_mesh(&self.mesh);
+                    let v0 = positions[i0 as usize];
+                    let v1 = positions[i1 as usize];
+                    let v2 = positions[i2 as usize];
+                
+                    let normal = (v1 - v0).cross(v2 - v0);
+
+                    normals[i0 as usize] += normal;
+                    normals[i1 as usize] += normal;
+                    normals[i2 as usize] += normal;
+                }
+
+                for norm in &mut normals {
+                    *norm = norm.normalize();
+                }
+
+                mesh.mesh.set_attribute("vertex_position", positions);
+                mesh.mesh.set_attribute("vertex_normal", normals);
+                mesh.mesh.set_indices(indices);
+            }
         }
     }
 }
 
-impl MeshComponent {
-    pub fn new(mesh: Mesh) -> Self {
-        Self { mesh }
-    }
-}
+impl Component for Terrain {
+    type Plugins = ();
 
-#[derive(Default, Reflect, Inspect)]
-pub struct Camera {
-    pub projection: PerspectiveProjection,
-}
+    fn inspector_ui(&mut self, _: (), ctx: ComponentCtx, ui: &mut Ui) {
+        if ui.button("Generate Mesh").clicked() {
+            self.generate(ctx);
+        }
 
-impl Camera {
-    pub fn new() -> Self {
-        Default::default()
-    }
-}
-
-impl Component for Camera {
-    type Plugins = Render;
-
-    fn name() -> &'static str {
-        "Camera"
-    }
-
-    fn inspector_ui(&mut self, _: &mut Render, _ctx: ComponentCtx, ui: &mut Ui) {
         self.inspect(ui);
     }
-
-    fn update(&mut self, render: &mut Render, ctx: ComponentCtx) {
-        let size = ctx.render_resource.target_size();
-        self.projection.aspect = size.x / size.y;
-
-        let view_proj = self.projection.matrix() * ctx.global_transform.matrix().inverse();
-
-        render.camera = Some(view_proj);
-    }
-
-    fn editor_update(&mut self, render: &mut Render, ctx: ComponentCtx) {
-        Component::update(self, render, ctx);
-    }
-
-    fn despawn(&mut self, render: &mut Render, _ctx: ComponentCtx) {
-        //render.camera = None;
-    }
 }
 
-pub struct Render {
-    pub pipeline: RenderPipeline,
-    pub camera: Option<Mat4>,
+fn register_types(types: &mut Types) {
+    types.register_component::<Terrain>();
 }
 
-impl Plugin for Render {
-    fn init(ctx: PluginInitCtx) -> Self {
-        let shader =
-            Shader::from_glsl(include_str!("shader.vert"), include_str!("shader.frag")).unwrap();
-        let pipeline = RenderPipeline::new(
-            PipelineDescriptor::default_settings(shader),
-            ctx.render_resource,
-        )
-        .unwrap();
-
-        Self {
-            pipeline: pipeline,
-            camera: None,
-        }
-    }
-}
-
-quartz_engine::bridge! {
-    components: { MeshComponent, Camera }
-    plugins: { Render }
-}
+quartz_engine::register_types!(register_types);

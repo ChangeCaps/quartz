@@ -1,17 +1,17 @@
 use crate::project::*;
 use egui::Key;
 use egui::*;
-use quartz_engine::{editor_bridge::*, prelude::*};
-use quartz_render::{
-    framework::*,
+use quartz_engine::{
+    core::editor_bridge::*,
     prelude::{Vec2, *},
+    render::framework::*,
 };
 use std::collections::HashMap;
 use std::path::Path;
 use winit::event::{self, ElementState, MouseScrollDelta, VirtualKeyCode as VKey, WindowEvent};
 
 pub struct GameState {
-    pub state: quartz_engine::game_state::GameState,
+    pub state: quartz_engine::core::game_state::GameState,
     pub bridge: Bridge,
     pub running: bool,
 }
@@ -28,7 +28,7 @@ impl GameState {
         }
     }
 
-    pub fn deserialize<'de, D: quartz_engine::serde::Deserializer<'de>>(
+    pub fn deserialize<'de, D: quartz_engine::core::serde::Deserializer<'de>>(
         deserializer: D,
         path: impl AsRef<Path>,
         render_resource: &RenderResource,
@@ -43,7 +43,7 @@ impl GameState {
         }
     }
 
-    pub fn reload<'de, D: quartz_engine::serde::Deserializer<'de>>(
+    pub fn reload<'de, D: quartz_engine::core::serde::Deserializer<'de>>(
         &mut self,
         deserializer: D,
         render_resource: &RenderResource,
@@ -146,8 +146,8 @@ impl EditorState {
         }
     }
 
-    pub fn load_scene(&self) -> Option<String> {
-        if let Ok(scene) = std::fs::read_to_string(self.project.path.join("scene.scn")) {
+    pub fn load_scene(&self) -> Option<Vec<u8>> {
+        if let Ok(scene) = std::fs::read(self.project.path.join("scene.scn")) {
             Some(scene)
         } else {
             None
@@ -158,8 +158,8 @@ impl EditorState {
         if let Some(game) = &self.game {
             if !game.running {
                 if let Ok(file) = std::fs::File::create(self.project.path.join("scene.scn")) {
-                    let mut serializer =
-                        ron::Serializer::new(file, Some(Default::default()), true).unwrap();
+                    let mut serializer = //ron::Serializer::new(file, Some(ron::ser::PrettyConfig::default()), false).unwrap();
+                        serde_cbor::Serializer::new(serde_cbor::ser::IoWrite::new(file));
 
                     game.state.serialize_tree(&mut serializer).unwrap();
                 }
@@ -167,9 +167,10 @@ impl EditorState {
         }
     }
 
-    pub fn reload_game(&mut self, scene: &str, render_resource: &mut RenderResource) {
+    pub fn reload_game(&mut self, scene: &[u8], render_resource: &mut RenderResource) {
         if let Some(game) = &mut self.game {
-            let mut deserializer = ron::Deserializer::from_str(scene).unwrap();
+            let mut deserializer = //ron::Deserializer::from_bytes(scene).unwrap();
+                serde_cbor::Deserializer::from_slice(scene);
 
             render_resource
                 .target_texture(self.egui_textures.get(&0).expect("main texture not found"));
@@ -182,12 +183,13 @@ impl EditorState {
         }
     }
 
-    pub fn load(&mut self, scene: Option<&str>, render_resource: &mut RenderResource) {
+    pub fn load(&mut self, scene: Option<&[u8]>, render_resource: &mut RenderResource) {
         if let Some(render_texture) = self.egui_textures.get(&0) {
             render_resource.target_texture(render_texture);
 
             let mut state = if let Some(scene) = scene {
-                let mut deserializer = ron::Deserializer::from_str(scene).unwrap();
+                let mut deserializer = //ron::Deserializer::from_bytes(scene).unwrap();
+                    serde_cbor::Deserializer::from_slice(scene);
 
                 GameState::deserialize(
                     &mut deserializer,
@@ -210,8 +212,8 @@ impl EditorState {
     }
 }
 
-impl quartz_render::framework::State for EditorState {
-    fn update(&mut self, ctx: quartz_render::framework::UpdateCtx<'_>) -> Trans {
+impl State for EditorState {
+    fn update(&mut self, ctx: UpdateCtx<'_>) -> Trans {
         let size = ctx.window.size();
         let size = egui::Vec2::new(size.x, size.y);
         self.egui_raw_input.screen_rect = Some(Rect::from_min_size(Default::default(), size));

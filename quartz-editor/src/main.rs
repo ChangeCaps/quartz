@@ -2,7 +2,7 @@ mod editor_state;
 mod project;
 mod ui;
 
-use quartz_render::framework::App;
+use quartz_engine::render::framework::App;
 
 fn main() {
     simple_logger::SimpleLogger::new()
