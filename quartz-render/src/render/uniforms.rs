@@ -15,7 +15,7 @@ pub trait Uniform {
 fn append_aligned<T: Uniform>(data: &mut Vec<u8>, uniform: &T, alignment: wgpu::BufferAddress) {
     data.append(&mut uniform.data());
 
-    let remaining_bytes = ((data.len() - 1) / alignment as usize + 1) * alignment as usize;
+    let remaining_bytes = ((data.len() - 1) / alignment as usize + 1) * alignment as usize - data.len();
 
     data.append(&mut vec![0; remaining_bytes]);
 }
