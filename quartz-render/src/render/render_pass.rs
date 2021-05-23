@@ -33,6 +33,21 @@ pub struct DepthAttachment<F: TextureFormat> {
     pub stencil_ops: Option<Operations<f32>>,
 }
 
+impl<F: TextureFormat> Default for DepthAttachment<F> {
+    fn default() -> Self {
+        Self {
+            texture: TextureAttachment::Main,
+            depth_ops: Some(
+                Operations {
+                    load: LoadOp::Clear(1.0),
+                    store: true,
+                }
+            ),
+            stencil_ops: None,
+        }
+    }
+}
+
 pub struct RenderPassDescriptor<
     C: TextureFormat = format::TargetFormat,
     D: TextureFormat = format::Depth32Float,

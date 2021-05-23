@@ -206,7 +206,7 @@ impl<F: TextureFormat> Default for DepthStencilState<F> {
     fn default() -> Self {
         Self {
             depth_write_enabled: true,
-            depth_compare: CompareFunction::GreaterEqual,
+            depth_compare: CompareFunction::LessEqual,
             stencil: StencilState::default(),
             bias: DepthBiasState::default(),
             _marker: Default::default(),
