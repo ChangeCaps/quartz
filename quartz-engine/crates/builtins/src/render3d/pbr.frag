@@ -5,6 +5,13 @@ layout(location = 1) in vec3 v_world_normal;
 
 layout(location = 0) out vec4 out_color;
 
+const int MAX_LIGHTS = 64;
+
+layout(set = 0, binding = 2) uniform Lights {
+    uint num_lights;
+    vec3 lights[MAX_LIGHTS];
+};
+
 void main() {
     vec3 color = vec3(1.0);
 

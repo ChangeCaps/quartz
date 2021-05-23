@@ -5,7 +5,7 @@ mod quartz_engine {
     pub use quartz_engine_core as core;
 }
 
-pub const MAX_LIGHTS: u64 = 64;
+pub const MAX_LIGHTS: u32 = 64;
 
 pub fn register_types(types: &mut Types) {
     types.register_plugin::<Render3dPlugin>();
@@ -103,6 +103,7 @@ impl Component for Mesh3d {
 
             render.pbr_pipeline.bind_uniform("Transform", model);
             render.pbr_pipeline.bind_uniform("Camera", *view_proj);
+            render.pbr_pipeline.bind_uniform("Lights", render.lights);
 
             ctx.render_pass
                 .with_pipeline(&render.pbr_pipeline)
