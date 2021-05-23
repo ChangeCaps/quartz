@@ -28,21 +28,19 @@ pub struct ColorAttachment<F: TextureFormat> {
 }
 
 pub struct DepthAttachment<F: TextureFormat> {
-    pub texture: TextureAttachment<F>,
+    pub texture: TextureView<F>,
     pub depth_ops: Option<Operations<f32>>,
-    pub stencil_ops: Option<Operations<f32>>,
+    pub stencil_ops: Option<Operations<u32>>,
 }
 
-impl<F: TextureFormat> Default for DepthAttachment<F> {
-    fn default() -> Self {
+impl<F: TextureFormat> DepthAttachment<F> {
+    pub fn default_settings(view: TextureView<F>) -> Self {
         Self {
-            texture: TextureAttachment::Main,
-            depth_ops: Some(
-                Operations {
-                    load: LoadOp::Clear(1.0),
-                    store: true,
-                }
-            ),
+            texture: view,
+            depth_ops: Some(Operations {
+                load: LoadOp::Clear(1.0),
+                store: true,
+            }),
             stencil_ops: None,
         }
     }
@@ -223,7 +221,13 @@ pub(crate) fn execute_commands<C: TextureFormat, D: TextureFormat>(
     let descriptor = wgpu::RenderPassDescriptor {
         label,
         color_attachments: &color_attachments,
-        depth_stencil_attachment: None,
+        depth_stencil_attachment: descriptor.depth_attachment.as_ref().map(|depth_attachment| {
+            wgpu::RenderPassDepthStencilAttachment {
+                view: &depth_attachment.texture.view,
+                depth_ops: depth_attachment.depth_ops.clone(),
+                stencil_ops: depth_attachment.stencil_ops.clone(),
+            }
+        }),
     };
 
     let mut render_pass = ctx.encoder.begin_render_pass(&descriptor);
