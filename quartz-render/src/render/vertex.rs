@@ -130,10 +130,7 @@ impl Mesh {
         }
     }
 
-    pub fn get_attribute_mut<V: VertexAttribute>(
-        &mut self,
-        name: &str,
-    ) -> Option<&mut [V]> {
+    pub fn get_attribute_mut<V: VertexAttribute>(&mut self, name: &str) -> Option<&mut [V]> {
         if let Some(data) = self.vertex_data.get_mut(name) {
             self.vertex_buffers.lock().unwrap().remove(name);
 

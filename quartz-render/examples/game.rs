@@ -146,7 +146,7 @@ impl State for GameState {
                     store: true,
                 },
             }],
-            depth_stencil: None,
+            ..Default::default()
         };
 
         render_resource

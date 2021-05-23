@@ -27,7 +27,7 @@ pub struct ColorAttachment<F: TextureFormat> {
     pub ops: Operations<wgpu::Color>,
 }
 
-pub struct DepthStencil<F: TextureFormat> {
+pub struct DepthAttachment<F: TextureFormat> {
     pub texture: TextureAttachment<F>,
     pub depth_ops: Option<Operations<f32>>,
     pub stencil_ops: Option<Operations<f32>>,
@@ -39,7 +39,7 @@ pub struct RenderPassDescriptor<
 > {
     pub label: Option<String>,
     pub color_attachments: Vec<ColorAttachment<C>>,
-    pub depth_stencil: Option<DepthStencil<D>>,
+    pub depth_attachment: Option<DepthAttachment<D>>,
 }
 
 impl<C: TextureFormat, D: TextureFormat> Default for RenderPassDescriptor<C, D> {
@@ -54,7 +54,7 @@ impl<C: TextureFormat, D: TextureFormat> Default for RenderPassDescriptor<C, D> 
                     store: true,
                 },
             }],
-            depth_stencil: None,
+            depth_attachment: None,
         }
     }
 }
