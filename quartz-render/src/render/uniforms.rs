@@ -5,6 +5,8 @@ use std::sync::Arc;
 use wgpu::util::DeviceExt;
 
 pub trait Uniform {
+    fn alignment() -> wgpu::BufferAddress;
+
     fn size() -> wgpu::BufferAddress;
 
     fn data(&self) -> Vec<u8>;
@@ -80,8 +82,12 @@ impl<T: Uniform, const L: u32> UniformBuffer<T, L> {
 }
 
 impl<T: Uniform, const L: u32> Uniform for UniformBuffer<T, L> {
+    fn alignment() -> u64 {
+        16
+    }
+
     fn size() -> u64 {
-        T::size() * L as u64 + 4
+        ((T::size() * L as u64 - 1) / 16 + 1) * 16 + 4
     }
 
     fn data(&self) -> Vec<u8> {
@@ -171,6 +177,10 @@ impl Binding for UniformBinding {
 }
 
 impl Uniform for f32 {
+    fn alignment() -> wgpu::BufferAddress {
+        4
+    }
+
     fn size() -> wgpu::BufferAddress {
         4
     }
@@ -181,6 +191,10 @@ impl Uniform for f32 {
 }
 
 impl Uniform for u32 {
+    fn alignment() -> wgpu::BufferAddress {
+        4
+    }
+
     fn size() -> wgpu::BufferAddress {
         4
     }
@@ -191,6 +205,10 @@ impl Uniform for u32 {
 }
 
 impl Uniform for i32 {
+    fn alignment() -> wgpu::BufferAddress {
+        4
+    }
+
     fn size() -> wgpu::BufferAddress {
         4
     }
@@ -201,6 +219,10 @@ impl Uniform for i32 {
 }
 
 impl Uniform for Vec2 {
+    fn alignment() -> wgpu::BufferAddress {
+        8
+    }
+
     fn size() -> wgpu::BufferAddress {
         8
     }
@@ -211,6 +233,10 @@ impl Uniform for Vec2 {
 }
 
 impl Uniform for Vec3 {
+    fn alignment() -> wgpu::BufferAddress {
+        16
+    }
+
     fn size() -> wgpu::BufferAddress {
         16
     }
@@ -221,6 +247,10 @@ impl Uniform for Vec3 {
 }
 
 impl Uniform for Vec4 {
+    fn alignment() -> wgpu::BufferAddress {
+        16
+    }
+
     fn size() -> wgpu::BufferAddress {
         16
     }
@@ -231,6 +261,10 @@ impl Uniform for Vec4 {
 }
 
 impl Uniform for Mat4 {
+    fn alignment() -> wgpu::BufferAddress {
+        16
+    }
+
     fn size() -> wgpu::BufferAddress {
         64
     }
