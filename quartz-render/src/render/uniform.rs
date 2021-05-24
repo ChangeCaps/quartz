@@ -191,6 +191,20 @@ impl Binding for UniformBinding {
     }
 }
 
+impl Uniform for bool {
+    fn alignment() -> wgpu::BufferAddress {
+        4
+    }
+
+    fn size() -> wgpu::BufferAddress {
+        4
+    }
+
+    fn data(&self) -> Vec<u8> {
+        bytes_of(&(*self as i32)).to_vec()
+    }
+}
+
 impl Uniform for f32 {
     fn alignment() -> wgpu::BufferAddress {
         4
