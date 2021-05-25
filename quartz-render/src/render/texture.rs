@@ -278,7 +278,7 @@ pub struct Texture<D: TextureDimension, F: TextureFormat = Rgba8UnormSrgb> {
     pub(crate) texture: wgpu::Texture,
     pub(crate) staging_buffer: Mutex<Option<wgpu::Buffer>>,
     pub(crate) view: Arc<wgpu::TextureView>,
-    pub(crate) data: RwLock<D::Data>,
+    pub(crate) data: RwLock<Option<D::Data>>,
     pub(crate) download: Arc<AtomicBool>,
     _marker: std::marker::PhantomData<F>,
     pub dimensions: D,
@@ -321,7 +321,7 @@ impl<D: TextureDimension, F: TextureFormat> Texture<D, F> {
             texture: texture,
             view: Arc::new(view),
             staging_buffer: Mutex::new(None),
-            data: RwLock::new(texture_descriptor.dimension.init_data()),
+            data: RwLock::new(None),
             dimensions: texture_descriptor.dimension.clone(),
             download: Arc::new(AtomicBool::new(true)),
             _marker: Default::default(),
@@ -423,8 +423,14 @@ impl<D: TextureDimension, F: TextureFormat> Texture<D, F> {
         {
             let mapped = slice.get_mapped_range();
 
+            let mut data = self.data.write().unwrap();
+
+            if data.is_none() {
+                *data = Some(self.dimensions.init_data());
+            }
+
             self.dimensions
-                .bytes_to_data(&mut self.data.write().unwrap(), &*mapped, &format);
+                .bytes_to_data(data.as_mut().unwrap(), &*mapped, &format);
         }
 
         staging_buffer.unmap();
@@ -433,7 +439,7 @@ impl<D: TextureDimension, F: TextureFormat> Texture<D, F> {
     pub fn read<T>(&self, render_resource: &RenderResource, mut f: impl FnMut(&D::Data) -> T) -> T {
         self.download_data(render_resource);
         let data = self.data.read().unwrap();
-        f(&data)
+        f(data.as_ref().unwrap())
     }
 
     pub fn write<T>(
@@ -444,7 +450,7 @@ impl<D: TextureDimension, F: TextureFormat> Texture<D, F> {
         self.download_data(render_resource);
 
         let mut data = self.data.write().unwrap();
-        let res = f(&mut data);
+        let res = f(data.as_mut().unwrap());
 
         let target_format = render_resource.target_format();
         let extent = self.dimensions.extent();
@@ -455,7 +461,7 @@ impl<D: TextureDimension, F: TextureFormat> Texture<D, F> {
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
-            &D::data_to_bytes(&data, &F::format(target_format)),
+            &D::data_to_bytes(data.as_ref().unwrap(), &F::format(target_format)),
             self.image_data_layout(render_resource),
             extent,
         );
