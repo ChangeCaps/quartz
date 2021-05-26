@@ -38,7 +38,7 @@ pub struct RenderPassDescriptor<
 }
 
 impl<'a, C: TextureFormat, D: TextureFormat> RenderPassDescriptor<'a, C, D> {
-    fn default_settings(texture: TextureView<'a, C>) -> Self {
+    pub fn default_settings(texture: TextureView<'a, C>) -> Self {
         Self {
             label: Some("Render Pass".into()),
             color_attachments: vec![ColorAttachment::<'a, C> {
@@ -185,10 +185,16 @@ pub(crate) fn execute_commands<C: TextureFormat, D: TextureFormat>(
     let color_attachments = descriptor
         .color_attachments
         .iter()
-        .map(|attachment| wgpu::RenderPassColorAttachment {
-            view: &attachment.texture.view(),
-            resolve_target: attachment.resolve_target.as_ref().map(|t| &*t.view()),
-            ops: attachment.ops.clone(),
+        .map(|attachment| {
+            if let Some(download) = &attachment.texture.download {
+                download.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+
+            wgpu::RenderPassColorAttachment {
+                view: &attachment.texture.view(),
+                resolve_target: attachment.resolve_target.as_ref().map(|t| &*t.view()),
+                ops: attachment.ops.clone(),
+            }
         })
         .collect::<Vec<_>>();
 
@@ -203,10 +209,16 @@ pub(crate) fn execute_commands<C: TextureFormat, D: TextureFormat>(
         depth_stencil_attachment: descriptor
             .depth_attachment
             .as_ref()
-            .map(|depth_attachment| wgpu::RenderPassDepthStencilAttachment {
-                view: &depth_attachment.texture.view(),
-                depth_ops: depth_attachment.depth_ops.clone(),
-                stencil_ops: depth_attachment.stencil_ops.clone(),
+            .map(|depth_attachment| {
+                if let Some(download) = &depth_attachment.texture.download {
+                    download.store(true, std::sync::atomic::Ordering::SeqCst);
+                }
+
+                wgpu::RenderPassDepthStencilAttachment {
+                    view: &depth_attachment.texture.view(),
+                    depth_ops: depth_attachment.depth_ops.clone(),
+                    stencil_ops: depth_attachment.stencil_ops.clone(),
+                }
             }),
     };
 
