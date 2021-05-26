@@ -276,13 +276,12 @@ pub struct EmptyRenderPass<'a, 'b, 'c, C: TextureFormat, D: TextureFormat> {
 
 impl<'a, 'b, 'c, C: TextureFormat, D: TextureFormat> EmptyRenderPass<'a, 'b, 'c, C, D> {
     pub fn with_pipeline(
-        &'a mut self,
+        &'c mut self,
         pipeline: &'a RenderPipeline<C, D>,
     ) -> PipelineRenderPass<'a, 'b, 'c, C, D> {
         let mut pass = PipelineRenderPass {
             commands: &mut self.commands,
             pipeline,
-            descriptor: self.descriptor,
             ctx: self.ctx,
         };
 
@@ -293,9 +292,8 @@ impl<'a, 'b, 'c, C: TextureFormat, D: TextureFormat> EmptyRenderPass<'a, 'b, 'c,
 }
 
 pub struct PipelineRenderPass<'a, 'b, 'c, C: TextureFormat, D: TextureFormat> {
-    pub(crate) commands: &'a mut Vec<Command>,
+    pub(crate) commands: &'c mut Vec<Command>,
     pub(crate) pipeline: &'a RenderPipeline<C, D>,
-    pub(crate) descriptor: &'a RenderPassDescriptor<'c, C, D>,
     pub(crate) ctx: &'a mut RenderCtx<'b>,
 }
 
