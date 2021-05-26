@@ -522,6 +522,15 @@ impl<'a, F: TextureFormat> TextureView<'a, F> {
     pub fn format(&self) -> F {
         self.format.clone()
     }
+
+    pub fn map_format<NF: TextureFormat>(self, f: fn(F) -> NF) -> TextureView<'a, NF> {
+        TextureView {
+            view: self.view,
+            download: self.download,
+            extent: self.extent,
+            format: f(self.format),
+        }
+    }
 }
 
 impl<'a, F: TextureFormat> TextureView<'a, F> {
