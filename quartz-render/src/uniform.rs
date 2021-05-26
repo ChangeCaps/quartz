@@ -1,6 +1,6 @@
-use crate::render::*;
-use glam::*;
+use crate::prelude::*;
 use bytemuck::*;
+use glam::*;
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
 
@@ -148,8 +148,8 @@ impl UniformBinding {
         }
     }
 
-    pub fn create_buffer(&mut self, render_resource: &RenderResource) {
-        let buffer = render_resource
+    pub fn create_buffer(&mut self, instance: &Instance) {
+        let buffer = instance
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Uniform Buffer"),
@@ -162,17 +162,15 @@ impl UniformBinding {
 }
 
 impl Binding for UniformBinding {
-    fn prepare_resource(&mut self, render_resource: &RenderResource) {
+    fn prepare_resource(&mut self, instance: &Instance) {
         if self.buffer.is_none() {
-            self.create_buffer(render_resource);
+            self.create_buffer(instance);
         }
 
         if self.updated {
-            render_resource.queue.write_buffer(
-                self.buffer.as_ref().unwrap(),
-                0,
-                &self.data,
-            );
+            instance
+                .queue
+                .write_buffer(self.buffer.as_ref().unwrap(), 0, &self.data);
 
             self.updated = false;
         }

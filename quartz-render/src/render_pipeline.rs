@@ -1,4 +1,4 @@
-use crate::render::*;
+use crate::prelude::*;
 use spirv_reflect::types::{
     descriptor::ReflectDescriptorType, image::ReflectFormat, variable::ReflectDimension,
 };
@@ -34,7 +34,7 @@ pub enum BindingType {
 
 /// Implemented for anything that can be bound
 pub trait Binding: Any {
-    fn prepare_resource(&mut self, _render_resource: &RenderResource) {}
+    fn prepare_resource(&mut self, _instance: &Instance) {}
     fn binding_resource(&self) -> wgpu::BindingResource;
     fn type_id(&self) -> TypeId {
         TypeId::of::<Self>()
@@ -92,7 +92,7 @@ impl Bindings {
     pub fn generate_groups<C: TextureFormat, D: TextureFormat>(
         &mut self,
         pipeline: &RenderPipeline<C, D>,
-        render_resource: &RenderResource,
+        instance: &Instance,
     ) -> Vec<Arc<wgpu::BindGroup>> {
         pipeline
             .shader_layout
@@ -102,7 +102,7 @@ impl Bindings {
                 for (_binding, entry) in bind_group.bindings.iter() {
                     self.get_mut(&entry.ident)
                         .expect(format!("{} not bound", entry.ident).as_str())
-                        .prepare_resource(render_resource);
+                        .prepare_resource(instance);
                 }
 
                 let entries = bind_group
@@ -119,7 +119,7 @@ impl Bindings {
                     .collect::<Vec<_>>();
 
                 Arc::new(
-                    render_resource
+                    instance
                         .device
                         .create_bind_group(&wgpu::BindGroupDescriptor {
                             label: Some("Bind Group"),
@@ -181,15 +181,15 @@ pub struct PipelineLayout {
 pub struct ColorTargetState<F: TextureFormat> {
     pub blend: Option<BlendState>,
     pub write_mask: ColorWrite,
-    _marker: std::marker::PhantomData<F>,
+    pub format: F,
 }
 
-impl<F: TextureFormat> Default for ColorTargetState<F> {
+impl<F: TextureFormat + Default> Default for ColorTargetState<F> {
     fn default() -> Self {
         Self {
             blend: Some(BlendState::ALPHA_BLENDING),
             write_mask: ColorWrite::ALL,
-            _marker: Default::default(),
+            format: Default::default(),
         }
     }
 }
@@ -199,17 +199,17 @@ pub struct DepthStencilState<F: TextureFormat> {
     pub depth_compare: CompareFunction,
     pub stencil: StencilState,
     pub bias: DepthBiasState,
-    _marker: std::marker::PhantomData<F>,
+    pub format: F,
 }
 
-impl<F: TextureFormat> Default for DepthStencilState<F> {
+impl<F: TextureFormat + Default> Default for DepthStencilState<F> {
     fn default() -> Self {
         Self {
             depth_write_enabled: true,
             depth_compare: CompareFunction::LessEqual,
             stencil: StencilState::default(),
             bias: DepthBiasState::default(),
-            _marker: Default::default(),
+            format: Default::default(),
         }
     }
 }
@@ -226,7 +226,7 @@ pub struct PipelineDescriptor<
     pub primitive: PrimitiveState,
 }
 
-impl<C: TextureFormat, D: TextureFormat> PipelineDescriptor<C, D> {
+impl<C: TextureFormat + Default, D: TextureFormat + Default> PipelineDescriptor<C, D> {
     pub fn default_settings(shader: Shader) -> Self {
         Self {
             shader,
@@ -273,9 +273,9 @@ impl<C: TextureFormat, D: TextureFormat> RenderPipeline<C, D> {
     /// Creates a pipeline.
     pub fn new(
         descriptor: PipelineDescriptor<C, D>,
-        render_resource: &RenderResource,
+        instance: &Instance,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let limis = render_resource.device.limits();
+        let limis = instance.device.limits();
 
         let mut bind_groups = (0..limis.max_bind_groups as usize)
             .into_iter()
@@ -389,7 +389,7 @@ impl<C: TextureFormat, D: TextureFormat> RenderPipeline<C, D> {
             })
             .collect::<Vec<_>>();
 
-        let (vs_module, fs_module) = descriptor.shader.to_modules(render_resource);
+        let (vs_module, fs_module) = descriptor.shader.to_modules(instance);
 
         let layouts = bind_groups
             .iter_mut()
@@ -424,12 +424,13 @@ impl<C: TextureFormat, D: TextureFormat> RenderPipeline<C, D> {
                     })
                     .collect::<Vec<_>>();
 
-                let layout = render_resource.device.create_bind_group_layout(
-                    &wgpu::BindGroupLayoutDescriptor {
-                        label: Some("Bind Group Layout"),
-                        entries: &entries,
-                    },
-                );
+                let layout =
+                    instance
+                        .device
+                        .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                            label: Some("Bind Group Layout"),
+                            entries: &entries,
+                        });
 
                 bind_group.layout = Some(Arc::new(layout));
 
@@ -437,22 +438,19 @@ impl<C: TextureFormat, D: TextureFormat> RenderPipeline<C, D> {
             })
             .collect::<Vec<_>>();
 
-        let layout =
-            render_resource
-                .device
-                .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                    label: Some("Pipeline Layout"),
-                    bind_group_layouts: &layouts,
-                    push_constant_ranges: &[],
-                });
-
-        let target_format = render_resource.target_format();
+        let layout = instance
+            .device
+            .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Pipeline Layout"),
+                bind_group_layouts: &layouts,
+                push_constant_ranges: &[],
+            });
 
         let targets = descriptor
             .targets
             .iter()
             .map(|target| wgpu::ColorTargetState {
-                format: C::format(target_format),
+                format: target.format.format(),
                 blend: target.blend.clone(),
                 write_mask: target.write_mask.clone(),
             })
@@ -463,37 +461,36 @@ impl<C: TextureFormat, D: TextureFormat> RenderPipeline<C, D> {
                 .depth_stencil
                 .as_ref()
                 .map(|depth_stencil| wgpu::DepthStencilState {
-                    format: D::format(target_format),
+                    format: depth_stencil.format.format(),
                     depth_write_enabled: depth_stencil.depth_write_enabled,
                     depth_compare: depth_stencil.depth_compare.clone(),
                     stencil: depth_stencil.stencil.clone(),
                     bias: depth_stencil.bias.clone(),
                 });
 
-        let pipeline =
-            render_resource
-                .device
-                .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                    label: Some("Render Pipeline"),
-                    layout: Some(&layout),
-                    vertex: wgpu::VertexState {
-                        module: &vs_module,
-                        entry_point: "main",
-                        buffers: &buffers,
-                    },
-                    fragment: Some(wgpu::FragmentState {
-                        module: &fs_module,
-                        entry_point: "main",
-                        targets: &targets,
-                    }),
-                    primitive: descriptor.primitive.clone(),
-                    depth_stencil,
-                    multisample: wgpu::MultisampleState {
-                        count: 1,
-                        mask: !0,
-                        alpha_to_coverage_enabled: false,
-                    },
-                });
+        let pipeline = instance
+            .device
+            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("Render Pipeline"),
+                layout: Some(&layout),
+                vertex: wgpu::VertexState {
+                    module: &vs_module,
+                    entry_point: "main",
+                    buffers: &buffers,
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &fs_module,
+                    entry_point: "main",
+                    targets: &targets,
+                }),
+                primitive: descriptor.primitive.clone(),
+                depth_stencil,
+                multisample: wgpu::MultisampleState {
+                    count: 1,
+                    mask: !0,
+                    alpha_to_coverage_enabled: false,
+                },
+            });
 
         Ok(Self {
             descriptor,
@@ -544,7 +541,7 @@ impl<C: TextureFormat, D: TextureFormat> RenderPipeline<C, D> {
     }
 
     /// Updates the bindings on the gpu.
-    pub fn submit_bindings(&self, render_resource: &RenderResource) {
+    pub fn submit_bindings(&self, instance: &Instance) {
         if !self.bindings_changed.swap(false, Ordering::SeqCst) {
             return;
         }
@@ -553,7 +550,7 @@ impl<C: TextureFormat, D: TextureFormat> RenderPipeline<C, D> {
             .bindings
             .lock()
             .unwrap()
-            .generate_groups(self, render_resource);
+            .generate_groups(self, instance);
 
         *self.bind_groups.lock().unwrap() = bind_groups;
     }

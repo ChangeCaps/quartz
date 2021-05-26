@@ -1,5 +1,5 @@
 use crate::color::*;
-use crate::render::*;
+use crate::prelude::*;
 use bytemuck::*;
 use glam::*;
 use serde::{Deserialize, Serialize};
@@ -163,16 +163,15 @@ impl Mesh {
         self.vertex_buffers.lock().unwrap().remove(name);
     }
 
-    pub fn create_vertex_buffer(&self, name: &String, render_resource: &RenderResource) {
+    pub fn create_vertex_buffer(&self, name: &String, instance: &Instance) {
         if let Some(data) = self.vertex_data.get(name) {
-            let buffer =
-                render_resource
-                    .device
-                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: Some("Vertex Buffer"),
-                        contents: cast_slice(&data.data),
-                        usage: wgpu::BufferUsage::VERTEX,
-                    });
+            let buffer = instance
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Vertex Buffer"),
+                    contents: cast_slice(&data.data),
+                    usage: wgpu::BufferUsage::VERTEX,
+                });
 
             self.vertex_buffers
                 .lock()
@@ -181,14 +180,10 @@ impl Mesh {
         }
     }
 
-    pub fn create_vertex_buffers(
-        &self,
-        pipeline: &PipelineLayout,
-        render_resource: &RenderResource,
-    ) {
+    pub fn create_vertex_buffers(&self, pipeline: &PipelineLayout, instance: &Instance) {
         for (name, _attribute) in &pipeline.vertex_attributes {
             if !self.has_vertex_buffer(name) {
-                self.create_vertex_buffer(name, render_resource);
+                self.create_vertex_buffer(name, instance);
             }
         }
     }
@@ -201,15 +196,14 @@ impl Mesh {
         self.vertex_buffers.lock().unwrap().get(name).cloned()
     }
 
-    pub fn create_index_buffer(&self, render_resource: &RenderResource) {
-        let index_buffer =
-            render_resource
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("Index Buffer"),
-                    contents: cast_slice(&self.indices),
-                    usage: wgpu::BufferUsage::INDEX,
-                });
+    pub fn create_index_buffer(&self, instance: &Instance) {
+        let index_buffer = instance
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Index Buffer"),
+                contents: cast_slice(&self.indices),
+                usage: wgpu::BufferUsage::INDEX,
+            });
 
         *self.index_buffer.lock().unwrap() = Some(Arc::new(index_buffer));
     }

@@ -1,5 +1,5 @@
 use crate::color::*;
-use crate::render::*;
+use crate::prelude::*;
 use format::*;
 use futures::executor::block_on;
 use std::sync::{
@@ -259,13 +259,17 @@ impl TextureDimension for D2Array {
     }
 }
 
-pub struct TextureDescriptor<D: TextureDimension> {
-    dimension: D,
+pub struct TextureDescriptor<D: TextureDimension, F: TextureFormat> {
+    pub dimension: D,
+    pub format: F,
 }
 
-impl<D: TextureDimension> TextureDescriptor<D> {
+impl<D: TextureDimension, F: TextureFormat + Default> TextureDescriptor<D, F> {
     pub fn default_settings(dimension: D) -> Self {
-        Self { dimension }
+        Self {
+            dimension,
+            format: Default::default(),
+        }
     }
 }
 
@@ -280,31 +284,24 @@ pub struct Texture<D: TextureDimension, F: TextureFormat = Rgba8UnormSrgb> {
     pub(crate) view: Arc<wgpu::TextureView>,
     pub(crate) data: RwLock<Option<D::Data>>,
     pub(crate) download: Arc<AtomicBool>,
-    _marker: std::marker::PhantomData<F>,
+    pub(crate) format: F,
     pub dimensions: D,
 }
 
 impl<D: TextureDimension, F: TextureFormat> Texture<D, F> {
-    pub fn new(
-        texture_descriptor: &TextureDescriptor<D>,
-        render_resource: &RenderResource,
-    ) -> Self {
-        let target_format = render_resource.target_format();
-
-        let texture = render_resource
-            .device
-            .create_texture(&wgpu::TextureDescriptor {
-                label: None,
-                size: texture_descriptor.dimension.extent(),
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: texture_descriptor.dimension.get_dimension(),
-                format: F::format(target_format),
-                usage: wgpu::TextureUsage::SAMPLED
-                    | wgpu::TextureUsage::RENDER_ATTACHMENT
-                    | wgpu::TextureUsage::COPY_SRC
-                    | wgpu::TextureUsage::COPY_DST,
-            });
+    pub fn new(texture_descriptor: &TextureDescriptor<D, F>, instance: &Instance) -> Self {
+        let texture = instance.device.create_texture(&wgpu::TextureDescriptor {
+            label: None,
+            size: texture_descriptor.dimension.extent(),
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: texture_descriptor.dimension.get_dimension(),
+            format: texture_descriptor.format.format(),
+            usage: wgpu::TextureUsage::SAMPLED
+                | wgpu::TextureUsage::RENDER_ATTACHMENT
+                | wgpu::TextureUsage::COPY_SRC
+                | wgpu::TextureUsage::COPY_DST,
+        });
 
         let view = texture.create_view(&wgpu::TextureViewDescriptor {
             label: None,
@@ -324,33 +321,30 @@ impl<D: TextureDimension, F: TextureFormat> Texture<D, F> {
             data: RwLock::new(None),
             dimensions: texture_descriptor.dimension.clone(),
             download: Arc::new(AtomicBool::new(true)),
-            _marker: Default::default(),
+            format: texture_descriptor.format.clone(),
         }
     }
 
-    fn create_staging_buffer(&self, size: u64, render_resource: &RenderResource) {
+    fn create_staging_buffer(&self, size: u64, instance: &Instance) {
         let mut staging_buffer = self.staging_buffer.lock().unwrap();
 
         if staging_buffer.is_none() {
-            let buffer = render_resource
-                .device
-                .create_buffer(&wgpu::BufferDescriptor {
-                    label: Some("Texture Staging Buffer"),
-                    size,
-                    mapped_at_creation: false,
-                    usage: wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_DST,
-                });
+            let buffer = instance.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Texture Staging Buffer"),
+                size,
+                mapped_at_creation: false,
+                usage: wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_DST,
+            });
 
             *staging_buffer = Some(buffer)
         }
     }
 
-    fn image_data_layout(&self, render_resource: &RenderResource) -> wgpu::ImageDataLayout {
+    fn image_data_layout(&self, instance: &Instance) -> wgpu::ImageDataLayout {
         use std::num::NonZeroU32;
 
-        let target_format = render_resource.target_format();
         let extent = self.dimensions.extent();
-        let info = F::format(target_format).describe();
+        let info = self.format.format().describe();
 
         let bytes_per_row = NonZeroU32::new(info.block_size as u32 * extent.width).unwrap();
         let rows_per_image = NonZeroU32::new(extent.height).unwrap();
@@ -362,7 +356,7 @@ impl<D: TextureDimension, F: TextureFormat> Texture<D, F> {
         }
     }
 
-    pub fn download_data(&self, render_resource: &RenderResource) {
+    pub fn download_data(&self, instance: &Instance) {
         use std::num::NonZeroU32;
 
         if !self.download.load(Ordering::SeqCst) {
@@ -372,8 +366,7 @@ impl<D: TextureDimension, F: TextureFormat> Texture<D, F> {
         self.download.store(false, Ordering::SeqCst);
 
         let extent = self.dimensions.extent();
-        let target_format = render_resource.target_format();
-        let format = F::format(target_format);
+        let format = self.format.format();
         let info = format.describe();
 
         let block_size = info.block_size as u32;
@@ -381,18 +374,14 @@ impl<D: TextureDimension, F: TextureFormat> Texture<D, F> {
         let bytes_per_row = block_size * data_width;
         let rows_per_image = extent.height;
 
-        self.create_staging_buffer(
-            bytes_per_row as u64 * rows_per_image as u64,
-            render_resource,
-        );
+        self.create_staging_buffer(bytes_per_row as u64 * rows_per_image as u64, instance);
         let staging_buffer = self.staging_buffer.lock().unwrap();
         let staging_buffer = staging_buffer.as_ref().unwrap();
-        let mut encoder =
-            render_resource
-                .device
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("Texture Read"),
-                });
+        let mut encoder = instance
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Texture Read"),
+            });
 
         encoder.copy_texture_to_buffer(
             wgpu::ImageCopyTexture {
@@ -411,13 +400,11 @@ impl<D: TextureDimension, F: TextureFormat> Texture<D, F> {
             extent,
         );
 
-        render_resource
-            .queue
-            .submit(std::iter::once(encoder.finish()));
+        instance.queue.submit(std::iter::once(encoder.finish()));
 
         let slice = staging_buffer.slice(..);
         let future = slice.map_async(wgpu::MapMode::Read);
-        render_resource.device.poll(wgpu::Maintain::Wait);
+        instance.device.poll(wgpu::Maintain::Wait);
         block_on(future).unwrap();
 
         {
@@ -436,33 +423,28 @@ impl<D: TextureDimension, F: TextureFormat> Texture<D, F> {
         staging_buffer.unmap();
     }
 
-    pub fn read<T>(&self, render_resource: &RenderResource, mut f: impl FnMut(&D::Data) -> T) -> T {
-        self.download_data(render_resource);
+    pub fn read<T>(&self, instance: &Instance, mut f: impl FnMut(&D::Data) -> T) -> T {
+        self.download_data(instance);
         let data = self.data.read().unwrap();
         f(data.as_ref().unwrap())
     }
 
-    pub fn write<T>(
-        &mut self,
-        render_resource: &RenderResource,
-        mut f: impl FnMut(&mut D::Data) -> T,
-    ) -> T {
-        self.download_data(render_resource);
+    pub fn write<T>(&mut self, instance: &Instance, mut f: impl FnMut(&mut D::Data) -> T) -> T {
+        self.download_data(instance);
 
         let mut data = self.data.write().unwrap();
         let res = f(data.as_mut().unwrap());
 
-        let target_format = render_resource.target_format();
         let extent = self.dimensions.extent();
 
-        render_resource.queue.write_texture(
+        instance.queue.write_texture(
             wgpu::ImageCopyTexture {
                 texture: &self.texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
-            &D::data_to_bytes(data.as_ref().unwrap(), &F::format(target_format)),
-            self.image_data_layout(render_resource),
+            &D::data_to_bytes(data.as_ref().unwrap(), &self.format.format()),
+            self.image_data_layout(instance),
             extent,
         );
 
@@ -471,8 +453,8 @@ impl<D: TextureDimension, F: TextureFormat> Texture<D, F> {
 
     pub fn view(&self) -> TextureView<F> {
         TextureView {
-            view: self.view.clone(),
-            download: self.download.clone(),
+            view: ViewInner::Owned(self.view.clone()),
+            download: Some(self.download.clone()),
             _marker: Default::default(),
         }
     }
@@ -492,20 +474,41 @@ impl<F: TextureFormat> Texture<D2Array, F> {
         });
 
         TextureView {
-            view: Arc::new(view),
-            download: self.download.clone(),
+            view: ViewInner::Owned(Arc::new(view)),
+            download: Some(self.download.clone()),
             _marker: Default::default(),
         }
     }
 }
 
-pub struct TextureView<F: TextureFormat = Rgba8UnormSrgb> {
-    pub(crate) view: Arc<wgpu::TextureView>,
-    pub(crate) download: Arc<AtomicBool>,
-    _marker: std::marker::PhantomData<F>,
+#[derive(Clone)]
+pub(crate) enum ViewInner<'a> {
+    Owned(Arc<wgpu::TextureView>),
+    Borrowed(&'a wgpu::TextureView),
 }
 
-impl<F: TextureFormat> Clone for TextureView<F> {
+impl<'a> ViewInner<'a> {
+    pub(crate) fn view(&self) -> &wgpu::TextureView {
+        match self {
+            Self::Owned(view) => &view,
+            Self::Borrowed(view) => view,
+        }
+    }
+}
+
+pub struct TextureView<'a, F: TextureFormat = Rgba8UnormSrgb> {
+    pub(crate) view: ViewInner<'a>,
+    pub(crate) download: Option<Arc<AtomicBool>>,
+    pub(crate) _marker: std::marker::PhantomData<F>,
+}
+
+impl<'a, F: TextureFormat> TextureView<'a, F> {
+    pub(crate) fn view(&self) -> &wgpu::TextureView {
+        self.view.view()
+    }
+}
+
+impl<'a, F: TextureFormat> Clone for TextureView<'a, F> {
     fn clone(&self) -> Self {
         Self {
             view: self.view.clone(),
@@ -515,9 +518,9 @@ impl<F: TextureFormat> Clone for TextureView<F> {
     }
 }
 
-impl<F: TextureFormat> Binding for TextureView<F> {
+impl<F: TextureFormat> Binding for TextureView<'static, F> {
     fn binding_resource(&self) -> wgpu::BindingResource {
-        wgpu::BindingResource::TextureView(&self.view)
+        wgpu::BindingResource::TextureView(self.view.view())
     }
 
     fn binding_clone(&self) -> Box<dyn Binding> {

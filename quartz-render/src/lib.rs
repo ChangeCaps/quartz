@@ -1,25 +1,33 @@
-pub mod app;
+pub mod buffer;
 pub mod color;
-pub mod event;
-pub mod input;
-pub mod mouse;
-pub mod render;
-pub mod state;
-pub mod transform;
-pub mod window;
+pub mod instance;
+pub mod projection;
+pub mod render_ctx;
+pub mod render_pass;
+pub mod render_pipeline;
+pub mod sampler;
+pub mod shader;
+pub mod texture;
+pub mod texture_format;
+pub mod uniform;
+pub mod vertex;
 
+pub use glam;
 pub use wgpu;
-
-pub mod framework {
-    pub use crate::app::App;
-    pub use crate::input::*;
-    pub use crate::mouse::*;
-    pub use crate::state::{State, Trans, UpdateCtx};
-}
 
 pub mod prelude {
     pub use crate::color::*;
-    pub use crate::render::*;
-    pub use crate::transform::*;
+    pub use crate::instance::*;
+    pub use crate::projection::*;
+    pub use crate::render_ctx::*;
+    pub use crate::render_pass::*;
+    pub use crate::render_pipeline::*;
+    pub use crate::sampler::*;
+    pub use crate::sampler::*;
+    pub use crate::shader::*;
+    pub use crate::texture::*;
+    pub use crate::texture_format::{self as format, TextureFormat};
+    pub use crate::uniform::*;
+    pub use crate::vertex::*;
     pub use glam::{swizzles::*, *};
 }

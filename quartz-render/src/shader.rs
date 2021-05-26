@@ -1,4 +1,4 @@
-use crate::render::*;
+use crate::prelude::*;
 use std::path::Path;
 
 pub struct Shader {
@@ -36,29 +36,24 @@ impl Shader {
         Ok(Self { vs_spirv, fs_spirv })
     }
 
-    pub fn to_modules(
-        &self,
-        render_resource: &RenderResource,
-    ) -> (wgpu::ShaderModule, wgpu::ShaderModule) {
+    pub fn to_modules(&self, instance: &Instance) -> (wgpu::ShaderModule, wgpu::ShaderModule) {
         let vs_data = wgpu::util::make_spirv(self.vs_spirv.as_binary_u8());
         let fs_data = wgpu::util::make_spirv(self.fs_spirv.as_binary_u8());
 
-        let vs_module =
-            render_resource
-                .device
-                .create_shader_module(&wgpu::ShaderModuleDescriptor {
-                    label: Some("Vertex Shader"),
-                    source: vs_data,
-                    flags: wgpu::ShaderFlags::default(),
-                });
-        let fs_module =
-            render_resource
-                .device
-                .create_shader_module(&wgpu::ShaderModuleDescriptor {
-                    label: Some("Fragment Shader"),
-                    source: fs_data,
-                    flags: wgpu::ShaderFlags::default(),
-                });
+        let vs_module = instance
+            .device
+            .create_shader_module(&wgpu::ShaderModuleDescriptor {
+                label: Some("Vertex Shader"),
+                source: vs_data,
+                flags: wgpu::ShaderFlags::default(),
+            });
+        let fs_module = instance
+            .device
+            .create_shader_module(&wgpu::ShaderModuleDescriptor {
+                label: Some("Fragment Shader"),
+                source: fs_data,
+                flags: wgpu::ShaderFlags::default(),
+            });
 
         (vs_module, fs_module)
     }

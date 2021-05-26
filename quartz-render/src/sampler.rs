@@ -1,4 +1,4 @@
-use crate::render::*;
+use crate::prelude::*;
 use std::sync::Arc;
 pub use wgpu::AddressMode;
 pub use wgpu::FilterMode;
@@ -23,23 +23,21 @@ pub struct Sampler {
 }
 
 impl Sampler {
-    pub fn new(descriptor: &SamplerDescriptor, render_resource: &RenderResource) -> Self {
-        let sampler = render_resource
-            .device
-            .create_sampler(&wgpu::SamplerDescriptor {
-                label: None,
-                address_mode_u: descriptor.address_mode,
-                address_mode_v: descriptor.address_mode,
-                address_mode_w: descriptor.address_mode,
-                mag_filter: descriptor.filter,
-                min_filter: descriptor.filter,
-                mipmap_filter: descriptor.filter,
-                lod_min_clamp: 0.0,
-                lod_max_clamp: 0.0,
-                compare: None,
-                anisotropy_clamp: None,
-                border_color: None,
-            });
+    pub fn new(descriptor: &SamplerDescriptor, instance: &Instance) -> Self {
+        let sampler = instance.device.create_sampler(&wgpu::SamplerDescriptor {
+            label: None,
+            address_mode_u: descriptor.address_mode,
+            address_mode_v: descriptor.address_mode,
+            address_mode_w: descriptor.address_mode,
+            mag_filter: descriptor.filter,
+            min_filter: descriptor.filter,
+            mipmap_filter: descriptor.filter,
+            lod_min_clamp: 0.0,
+            lod_max_clamp: 0.0,
+            compare: None,
+            anisotropy_clamp: None,
+            border_color: None,
+        });
 
         Self {
             sampler: Arc::new(sampler),

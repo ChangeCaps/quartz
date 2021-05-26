@@ -1,7 +1,7 @@
 mod uniform;
 
 use proc_macro::TokenStream;
-use proc_macro_crate::{crate_name, FoundCrate, Error};
+use proc_macro_crate::{crate_name, Error, FoundCrate};
 
 fn crate_path() -> proc_macro2::TokenStream {
     if let Ok(found) = crate_name("quartz-render") {

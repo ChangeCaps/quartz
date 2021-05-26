@@ -1,42 +1,23 @@
-use crate::render::*;
+use crate::prelude::*;
 use std::sync::Arc;
 pub use wgpu::{LoadOp, Operations};
 
-pub enum TextureAttachment<F: TextureFormat> {
-    Texture(TextureView<F>),
-    Main,
-}
-
-impl<F: TextureFormat> TextureAttachment<F> {
-    pub fn get_texture_view<'a>(&'a self, main: &'a wgpu::TextureView) -> &'a wgpu::TextureView {
-        match self {
-            Self::Texture(texture) => {
-                texture
-                    .download
-                    .store(true, std::sync::atomic::Ordering::SeqCst);
-                &texture.view
-            }
-            Self::Main => main,
-        }
-    }
-}
-
-pub struct ColorAttachment<F: TextureFormat> {
-    pub texture: TextureAttachment<F>,
-    pub resolve_target: Option<TextureAttachment<F>>,
+pub struct ColorAttachment<'a, F: TextureFormat> {
+    pub texture: TextureView<'a, F>,
+    pub resolve_target: Option<TextureView<'a, F>>,
     pub ops: Operations<wgpu::Color>,
 }
 
-pub struct DepthAttachment<F: TextureFormat> {
-    pub texture: TextureView<F>,
+pub struct DepthAttachment<'a, F: TextureFormat> {
+    pub texture: TextureView<'a, F>,
     pub depth_ops: Option<Operations<f32>>,
     pub stencil_ops: Option<Operations<u32>>,
 }
 
-impl<F: TextureFormat> DepthAttachment<F> {
-    pub fn default_settings(view: TextureView<F>) -> Self {
+impl<'a, F: TextureFormat> DepthAttachment<'a, F> {
+    pub fn default_settings(texture: TextureView<'a, F>) -> Self {
         Self {
-            texture: view,
+            texture,
             depth_ops: Some(Operations {
                 load: LoadOp::Clear(1.0),
                 store: true,
@@ -47,20 +28,21 @@ impl<F: TextureFormat> DepthAttachment<F> {
 }
 
 pub struct RenderPassDescriptor<
+    'a,
     C: TextureFormat = format::TargetFormat,
     D: TextureFormat = format::Depth32Float,
 > {
     pub label: Option<String>,
-    pub color_attachments: Vec<ColorAttachment<C>>,
-    pub depth_attachment: Option<DepthAttachment<D>>,
+    pub color_attachments: Vec<ColorAttachment<'a, C>>,
+    pub depth_attachment: Option<DepthAttachment<'a, D>>,
 }
 
-impl<C: TextureFormat, D: TextureFormat> Default for RenderPassDescriptor<C, D> {
-    fn default() -> Self {
+impl<'a, C: TextureFormat, D: TextureFormat> RenderPassDescriptor<'a, C, D> {
+    fn default_settings(texture: TextureView<'a, C>) -> Self {
         Self {
             label: Some("Render Pass".into()),
-            color_attachments: vec![ColorAttachment::<C> {
-                texture: TextureAttachment::<C>::Main,
+            color_attachments: vec![ColorAttachment::<'a, C> {
+                texture,
                 resolve_target: None,
                 ops: Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
@@ -106,7 +88,7 @@ pub(crate) enum Command {
 pub struct RenderPass<'a, 'b, C: TextureFormat, D: TextureFormat> {
     pub(crate) commands: Vec<Command>,
     pub(crate) pipeline: &'a RenderPipeline<C, D>,
-    pub(crate) descriptor: &'a RenderPassDescriptor<C, D>,
+    pub(crate) descriptor: &'a RenderPassDescriptor<'b, C, D>,
     pub(crate) ctx: &'a mut RenderCtx<'b>,
 }
 
@@ -122,7 +104,7 @@ impl<'a, 'b, C: TextureFormat, D: TextureFormat> RenderPass<'a, 'b, C, D> {
     }
 
     pub fn set_bindings(&mut self, mut bindings: Bindings) -> &mut Self {
-        let bind_groups = bindings.generate_groups(self.pipeline, self.ctx.render_resource);
+        let bind_groups = bindings.generate_groups(self.pipeline, self.ctx.instance);
 
         self.commands.push(Command::SetBindings { bind_groups });
 
@@ -163,10 +145,10 @@ impl<'a, 'b, C: TextureFormat, D: TextureFormat> RenderPass<'a, 'b, C, D> {
         self.set_bindings(self.pipeline.bindings.lock().unwrap().clone());
 
         if mesh.index_buffer.lock().unwrap().is_none() {
-            mesh.create_index_buffer(self.ctx.render_resource);
+            mesh.create_index_buffer(self.ctx.instance);
         }
 
-        mesh.create_vertex_buffers(&self.pipeline.shader_layout, self.ctx.render_resource);
+        mesh.create_vertex_buffers(&self.pipeline.shader_layout, self.ctx.instance);
 
         for (name, attribute) in &self.pipeline.shader_layout.vertex_attributes {
             let data = mesh.vertex_data.get(name).unwrap();
@@ -204,11 +186,8 @@ pub(crate) fn execute_commands<C: TextureFormat, D: TextureFormat>(
         .color_attachments
         .iter()
         .map(|attachment| wgpu::RenderPassColorAttachment {
-            view: attachment.texture.get_texture_view(&ctx.render_target),
-            resolve_target: attachment
-                .resolve_target
-                .as_ref()
-                .map(|t| t.get_texture_view(&ctx.render_target)),
+            view: &attachment.texture.view(),
+            resolve_target: attachment.resolve_target.as_ref().map(|t| &*t.view()),
             ops: attachment.ops.clone(),
         })
         .collect::<Vec<_>>();
@@ -221,16 +200,17 @@ pub(crate) fn execute_commands<C: TextureFormat, D: TextureFormat>(
     let descriptor = wgpu::RenderPassDescriptor {
         label,
         color_attachments: &color_attachments,
-        depth_stencil_attachment: descriptor.depth_attachment.as_ref().map(|depth_attachment| {
-            wgpu::RenderPassDepthStencilAttachment {
-                view: &depth_attachment.texture.view,
+        depth_stencil_attachment: descriptor
+            .depth_attachment
+            .as_ref()
+            .map(|depth_attachment| wgpu::RenderPassDepthStencilAttachment {
+                view: &depth_attachment.texture.view(),
                 depth_ops: depth_attachment.depth_ops.clone(),
                 stencil_ops: depth_attachment.stencil_ops.clone(),
-            }
-        }),
+            }),
     };
 
-    let mut render_pass = ctx.encoder.begin_render_pass(&descriptor);
+    let mut render_pass = ctx.encoder.as_mut().unwrap().begin_render_pass(&descriptor);
 
     for command in commands {
         match command {
@@ -278,7 +258,7 @@ impl<C: TextureFormat, D: TextureFormat> Drop for RenderPass<'_, '_, C, D> {
 
 pub struct EmptyRenderPass<'a, 'b, C: TextureFormat, D: TextureFormat> {
     pub(crate) commands: Vec<Command>,
-    pub(crate) descriptor: &'a RenderPassDescriptor<C, D>,
+    pub(crate) descriptor: &'a RenderPassDescriptor<'b, C, D>,
     pub(crate) ctx: &'a mut RenderCtx<'b>,
 }
 
@@ -315,7 +295,7 @@ impl<'a, 'b, 'c, C: TextureFormat, D: TextureFormat> PipelineRenderPass<'a, 'b, 
     }
 
     pub fn set_bindings(&mut self, mut bindings: Bindings) -> &mut Self {
-        let bind_groups = bindings.generate_groups(self.pipeline, self.pass.ctx.render_resource);
+        let bind_groups = bindings.generate_groups(self.pipeline, self.pass.ctx.instance);
 
         self.pass
             .commands
@@ -358,10 +338,10 @@ impl<'a, 'b, 'c, C: TextureFormat, D: TextureFormat> PipelineRenderPass<'a, 'b, 
         self.set_bindings(self.pipeline.bindings.lock().unwrap().clone());
 
         if mesh.index_buffer.lock().unwrap().is_none() {
-            mesh.create_index_buffer(self.pass.ctx.render_resource);
+            mesh.create_index_buffer(self.pass.ctx.instance);
         }
 
-        mesh.create_vertex_buffers(&self.pipeline.shader_layout, self.pass.ctx.render_resource);
+        mesh.create_vertex_buffers(&self.pipeline.shader_layout, self.pass.ctx.instance);
 
         for (name, attribute) in &self.pipeline.shader_layout.vertex_attributes {
             let data = mesh.vertex_data.get(name).unwrap();
