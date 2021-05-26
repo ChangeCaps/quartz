@@ -274,15 +274,15 @@ pub struct EmptyRenderPass<'a, 'b, 'c, C: TextureFormat, D: TextureFormat> {
     pub(crate) ctx: &'a mut RenderCtx<'b>,
 }
 
-impl<'a, 'b, 'c, C: TextureFormat, D: TextureFormat> EmptyRenderPass<'a, 'b, 'c, C, D> {
-    pub fn with_pipeline(
-        &'c mut self,
-        pipeline: &'a RenderPipeline<C, D>,
-    ) -> PipelineRenderPass<'a, 'b, 'c, C, D> {
+impl<'a, 'v, 'c, C: TextureFormat, D: TextureFormat> EmptyRenderPass<'a, 'v, 'c, C, D> {
+    pub fn with_pipeline<'rp>(
+        &'rp mut self,
+        pipeline: &'rp RenderPipeline<C, D>,
+    ) -> PipelineRenderPass<'a, 'rp, 'v, 'c, C, D> 
+    {
         let mut pass = PipelineRenderPass {
-            commands: &mut self.commands,
             pipeline,
-            ctx: self.ctx,
+            pass: self,
         };
 
         pass.set_pipeline(pipeline);
@@ -291,15 +291,14 @@ impl<'a, 'b, 'c, C: TextureFormat, D: TextureFormat> EmptyRenderPass<'a, 'b, 'c,
     }
 }
 
-pub struct PipelineRenderPass<'a, 'b, 'c, C: TextureFormat, D: TextureFormat> {
-    pub(crate) commands: &'c mut Vec<Command>,
-    pub(crate) pipeline: &'a RenderPipeline<C, D>,
-    pub(crate) ctx: &'a mut RenderCtx<'b>,
+pub struct PipelineRenderPass<'erp, 'rp, 'v, 'c, C: TextureFormat, D: TextureFormat> {
+    pub(crate) pipeline: &'rp RenderPipeline<C, D>,
+    pub(crate) pass: &'rp mut EmptyRenderPass<'erp, 'v, 'c, C, D>,
 }
 
-impl<'a, 'b, 'c, C: TextureFormat, D: TextureFormat> PipelineRenderPass<'a, 'b, 'c, C, D> {
-    pub fn set_pipeline(&mut self, pipeline: &'a RenderPipeline<C, D>) -> &mut Self {
-        self.commands.push(Command::SetPipeline {
+impl<'rp, C: TextureFormat, D: TextureFormat> PipelineRenderPass<'_, 'rp, '_, '_, C, D> {
+    pub fn set_pipeline(&mut self, pipeline: &'rp RenderPipeline<C, D>) -> &mut Self {
+        self.pass.commands.push(Command::SetPipeline {
             pipeline: pipeline.pipeline.clone(),
         });
 
@@ -309,9 +308,10 @@ impl<'a, 'b, 'c, C: TextureFormat, D: TextureFormat> PipelineRenderPass<'a, 'b, 
     }
 
     pub fn set_bindings(&mut self, mut bindings: Bindings) -> &mut Self {
-        let bind_groups = bindings.generate_groups(self.pipeline, self.ctx.instance);
+        let bind_groups = bindings.generate_groups(self.pipeline, self.pass.ctx.instance);
 
         self
+            .pass
             .commands
             .push(Command::SetBindings { bind_groups });
 
@@ -328,7 +328,7 @@ impl<'a, 'b, 'c, C: TextureFormat, D: TextureFormat> PipelineRenderPass<'a, 'b, 
 
     pub fn set_bind_groups(&mut self, bind_groups: &Vec<Arc<wgpu::BindGroup>>) -> &mut Self {
         for (set, bind_group) in bind_groups.iter().enumerate() {
-            self.commands.push(Command::SetBindGroup {
+            self.pass.commands.push(Command::SetBindGroup {
                 set: set as u32,
                 bind_group: bind_group.clone(),
             });
@@ -340,7 +340,7 @@ impl<'a, 'b, 'c, C: TextureFormat, D: TextureFormat> PipelineRenderPass<'a, 'b, 
     pub fn draw(&mut self, vertices: std::ops::Range<u32>) -> &mut Self {
         self.set_pipeline_bindings();
 
-        self.commands.push(Command::Draw {
+        self.pass.commands.push(Command::Draw {
             vertices,
             instances: 0..1,
         });
@@ -352,10 +352,10 @@ impl<'a, 'b, 'c, C: TextureFormat, D: TextureFormat> PipelineRenderPass<'a, 'b, 
         self.set_bindings(self.pipeline.bindings.lock().unwrap().clone());
 
         if mesh.index_buffer.lock().unwrap().is_none() {
-            mesh.create_index_buffer(self.ctx.instance);
+            mesh.create_index_buffer(self.pass.ctx.instance);
         }
 
-        mesh.create_vertex_buffers(&self.pipeline.shader_layout, self.ctx.instance);
+        mesh.create_vertex_buffers(&self.pipeline.shader_layout, self.pass.ctx.instance);
 
         for (name, attribute) in &self.pipeline.shader_layout.vertex_attributes {
             let data = mesh.vertex_data.get(name).unwrap();
@@ -363,18 +363,18 @@ impl<'a, 'b, 'c, C: TextureFormat, D: TextureFormat> PipelineRenderPass<'a, 'b, 
             if data.format == attribute.format {
                 let buffer = mesh.get_vertex_buffer(name).unwrap();
 
-                self.commands.push(Command::SetVertexBuffer {
+                self.pass.commands.push(Command::SetVertexBuffer {
                     slot: attribute.shader_location,
                     buffer: buffer,
                 });
             }
         }
 
-        self.commands.push(Command::SetIndexBuffer {
+        self.pass.commands.push(Command::SetIndexBuffer {
             buffer: mesh.index_buffer.lock().unwrap().clone().unwrap(),
             format: wgpu::IndexFormat::Uint32,
         });
-        self.commands.push(Command::DrawIndexed {
+        self.pass.commands.push(Command::DrawIndexed {
             indices: 0..mesh.indices.len() as u32,
             base_vertex: 0,
             instances: 0..1,

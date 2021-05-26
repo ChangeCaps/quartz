@@ -226,14 +226,14 @@ pub struct PipelineDescriptor<
     pub primitive: PrimitiveState,
 }
 
-impl<C: TextureFormat + Default, D: TextureFormat + Default> PipelineDescriptor<C, D> {
-    pub fn default_settings(shader: Shader) -> Self {
+impl<C: TextureFormat, D: TextureFormat + Default> PipelineDescriptor<C, D> {
+    pub fn default_settings(shader: Shader, format: C) -> Self {
         Self {
             shader,
             targets: vec![ColorTargetState {
                 blend: Some(BlendState::ALPHA_BLENDING),
                 write_mask: ColorWrite::ALL,
-                ..Default::default()
+                format,
             }],
             depth_stencil: Some(DepthStencilState {
                 ..Default::default()

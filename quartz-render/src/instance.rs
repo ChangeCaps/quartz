@@ -108,7 +108,7 @@ impl SwapChain {
                 height: self.height,
                 depth_or_array_layers: 1,
             },
-            _marker: Default::default(),
+            format: self.format(),
         };
 
         f(view);
