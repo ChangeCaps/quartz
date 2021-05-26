@@ -8,8 +8,8 @@ pub struct RenderCtx<'a> {
 impl<'a> RenderCtx<'a> {
     pub fn render_pass_empty<'b, C: TextureFormat, D: TextureFormat>(
         &'b mut self,
-        descriptor: &'b RenderPassDescriptor<'a, C, D>,
-    ) -> EmptyRenderPass<'b, 'a, C, D> {
+        descriptor: &'b RenderPassDescriptor<'_, C, D>,
+    ) -> EmptyRenderPass<'b, 'a, '_, C, D> {
         let pass = EmptyRenderPass {
             commands: Vec::new(),
             descriptor,
@@ -21,9 +21,9 @@ impl<'a> RenderCtx<'a> {
 
     pub fn render_pass<'b, C: TextureFormat, D: TextureFormat>(
         &'b mut self,
-        descriptor: &'b RenderPassDescriptor<'a, C, D>,
+        descriptor: &'b RenderPassDescriptor<'_, C, D>,
         pipeline: &'b RenderPipeline<C, D>,
-    ) -> RenderPass<'b, 'a, C, D> {
+    ) -> RenderPass<'b, 'a, '_, C, D> {
         let mut pass = RenderPass {
             commands: Vec::new(),
             pipeline: pipeline,
