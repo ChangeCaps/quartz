@@ -103,6 +103,11 @@ impl SwapChain {
         let view = TextureView {
             view: ViewInner::Borrowed(&frame.output.view),
             download: None,
+            extent: wgpu::Extent3d {
+                width: self.width,
+                height: self.height,
+                depth_or_array_layers: 1,
+            },
             _marker: Default::default(),
         };
 

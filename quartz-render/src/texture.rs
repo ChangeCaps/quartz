@@ -452,9 +452,12 @@ impl<D: TextureDimension, F: TextureFormat> Texture<D, F> {
     }
 
     pub fn view(&self) -> TextureView<F> {
+        let extent = self.dimensions.extent();
+
         TextureView {
             view: ViewInner::Owned(self.view.clone()),
             download: Some(self.download.clone()),
+            extent: self.dimensions.extent(),
             _marker: Default::default(),
         }
     }
@@ -476,12 +479,13 @@ impl<F: TextureFormat> Texture<D2Array, F> {
         TextureView {
             view: ViewInner::Owned(Arc::new(view)),
             download: Some(self.download.clone()),
+            extent: self.dimensions.extent(),
             _marker: Default::default(),
         }
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) enum ViewInner<'a> {
     Owned(Arc<wgpu::TextureView>),
     Borrowed(&'a wgpu::TextureView),
@@ -496,25 +500,31 @@ impl<'a> ViewInner<'a> {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct TextureView<'a, F: TextureFormat = Rgba8UnormSrgb> {
     pub(crate) view: ViewInner<'a>,
     pub(crate) download: Option<Arc<AtomicBool>>,
+    pub(crate) extent: wgpu::Extent3d,
     pub(crate) _marker: std::marker::PhantomData<F>,
+}
+
+impl<'a, F: TextureFormat> TextureView<'a, F> {
+    pub fn width(&self) -> u32 {
+        self.extent.width
+    }
+
+    pub fn height(&self) -> u32 {
+        self.extent.height
+    }
+
+    pub fn extent(&self) -> wgpu::Extent3d {
+        self.extent
+    }
 }
 
 impl<'a, F: TextureFormat> TextureView<'a, F> {
     pub(crate) fn view(&self) -> &wgpu::TextureView {
         self.view.view()
-    }
-}
-
-impl<'a, F: TextureFormat> Clone for TextureView<'a, F> {
-    fn clone(&self) -> Self {
-        Self {
-            view: self.view.clone(),
-            download: self.download.clone(),
-            _marker: Default::default(),
-        }
     }
 }
 
