@@ -13,5 +13,5 @@ serde = { version = "1.0.126", features = ["derive"] }
 erased-serde = "0.3.13"
 
 [features]
-default = []
+default = ["editor_bridge"]
 editor_bridge = ["libloading"]

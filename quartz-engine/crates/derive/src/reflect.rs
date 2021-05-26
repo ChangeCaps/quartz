@@ -113,6 +113,8 @@ fn reflect(ident: &Ident, generics: &Generics, data: &Data) -> TokenStream {
                     })
                     .collect::<Vec<_>>();
 
+                let len = fields.len();
+
                 let idents = fields.iter().map(|f| f.ident.as_ref().unwrap());
 
                 let names = fields.iter().map(|f| f.ident.as_ref().unwrap().to_string());
@@ -177,75 +179,85 @@ fn reflect(ident: &Ident, generics: &Generics, data: &Data) -> TokenStream {
                 let visitor_generics = add_de_lifetime(generics.clone());
                 let (impl_generics, _, where_clause) = visitor_generics.split_for_impl();
 
-                quote! {
-                    #field
-                    use quartz_engine::core::serde::Deserializer;
+                if len > 0 {
+                    quote! {
+                        #field
+                        use quartz_engine::core::serde::Deserializer;
 
-                    impl<'de> quartz_engine::core::serde::Deserialize<'de> for Field {
-                        fn deserialize<D>(deserializer: D) -> Result<Field, D::Error>
-                        where
-                            D: quartz_engine::core::serde::Deserializer<'de>,
+                        impl<'de> quartz_engine::core::serde::Deserialize<'de> for Field {
+                            fn deserialize<D>(deserializer: D) -> Result<Field, D::Error>
+                            where
+                                D: quartz_engine::core::serde::Deserializer<'de>,
+                            {
+                                use quartz_engine::core::serde::Deserializer;
+
+                                struct FieldVisitor;
+
+                                impl<'a, 'de> quartz_engine::core::serde::de::Visitor<'de> for FieldVisitor {
+                                    type Value = Field;
+
+                                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                                        formatter.write_str(#expecting)?;
+
+                                        Ok(())
+                                    }
+
+                                    fn visit_str<E>(self, value: &str) -> Result<Field, E>
+                                    where
+                                        E: quartz_engine::core::serde::de::Error,
+                                    {
+                                        #field_match
+                                    }
+                                }
+
+                                deserializer.deserialize_identifier(FieldVisitor)
+                            }
+                        }
+
+                        impl #impl_generics quartz_engine::core::serde::de::Visitor<'de> for
+                            &mut #ident <#type_params> #where_clause
                         {
-                            use quartz_engine::core::serde::Deserializer;
+                            type Value = ();
 
-                            struct FieldVisitor;
+                            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                                formatter.write_str(&format!("struct {}", #name))?;
 
-                            impl<'a, 'de> quartz_engine::core::serde::de::Visitor<'de> for FieldVisitor {
-                                type Value = Field;
-
-                                fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                                    formatter.write_str(#expecting)?;
-
-                                    Ok(())
-                                }
-
-                                fn visit_str<E>(self, value: &str) -> Result<Field, E>
-                                where
-                                    E: quartz_engine::core::serde::de::Error,
-                                {
-                                    #field_match
-                                }
+                                Ok(())
                             }
 
-                            deserializer.deserialize_identifier(FieldVisitor)
-                        }
-                    }
+                            #visit_seq
 
-                    impl #impl_generics quartz_engine::core::serde::de::Visitor<'de> for
-                        &mut #ident <#type_params> #where_clause
-                    {
-                        type Value = ();
+                            fn visit_map<V>(self, mut map: V) -> Result<(), V::Error>
+                            where
+                                V: quartz_engine::core::serde::de::MapAccess<'de>,
+                            {
+                                use quartz_engine::core::serde::de::MapAccess;
 
-                        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                            formatter.write_str(&format!("struct {}", #name))?;
-
-                            Ok(())
-                        }
-
-                        #visit_seq
-
-                        fn visit_map<V>(self, mut map: V) -> Result<(), V::Error>
-                        where
-                            V: quartz_engine::core::serde::de::MapAccess<'de>,
-                        {
-                            use quartz_engine::core::serde::de::MapAccess;
-
-                            while let Some(key) = map.next_key::<Field>()? {
-                                match key {
-                                    #(
-                                        Field::#idents => {
-                                            self.#idents = map.next_value()?;
-                                        },
-                                    )*
+                                while let Some(key) = map.next_key::<Field>()? {
+                                    match key {
+                                        #(
+                                            Field::#idents => {
+                                                self.#idents = map.next_value()?;
+                                            },
+                                        )*
+                                    }
                                 }
+
+                                Ok(())
                             }
-
-                            Ok(())
                         }
-                    }
 
-                    const FIELDS: &[&str] = &[#(#names),*];
-                    deserializer.deserialize_struct(#name, FIELDS, self).unwrap();
+                        const FIELDS: &[&str] = &[#(#names),*];
+                        deserializer.deserialize_struct(#name, FIELDS, self).unwrap();
+                    }
+                } else {
+                    quote! {
+                        use quartz_engine::core::serde::Deserializer;
+                        deserializer.deserialize_unit_struct(
+                            #name,
+                            quartz_engine::core::serde::de::IgnoredAny
+                        ).unwrap();
+                    }
                 }
             }
             _ => unimplemented!(),
@@ -260,33 +272,43 @@ fn serialize(ident: &Ident, data: &Data) -> TokenStream {
     match data {
         Data::Struct(data) => match &data.fields {
             Fields::Named(fields) => {
-                let num_fields = fields.named.len();
+                let fields = fields
+                    .named
+                    .iter()
+                    .filter_map(|f| {
+                        let attrs = ReflectFieldAttributes::parse(&f.attrs);
 
-                let fields = fields.named.iter().filter_map(|f| {
-                    let attrs = ReflectFieldAttributes::parse(&f.attrs);
+                        if attrs.ignore {
+                            None
+                        } else {
+                            let ident = f.ident.as_ref().unwrap();
+                            let name = ident.to_string();
+                            Some(quote_spanned! {f.span()=>
+                                state.serialize_field(#name, &self.#ident)?;
+                            })
+                        }
+                    })
+                    .collect::<Vec<_>>();
 
-                    if attrs.ignore {
-                        None
-                    } else {
-                        let ident = f.ident.as_ref().unwrap();
-                        let name = ident.to_string();
-                        Some(quote_spanned! {f.span()=>
-                            state.serialize_field(#name, &self.#ident)?;
-                        })
+                let num_fields = fields.len();
+
+                if num_fields > 0 {
+                    quote! {
+                        use quartz_engine::core::serde::ser::SerializeStruct;
+                        use quartz_engine::core::serde::Serializer;
+
+                        let mut state = serializer.serialize_struct(#name, #num_fields)?;
+
+                        #(
+                            #fields
+                        )*
+
+                        state.end()
                     }
-                });
-
-                quote! {
-                    use quartz_engine::core::serde::ser::SerializeStruct;
-                    use quartz_engine::core::serde::Serializer;
-
-                    let mut state = serializer.serialize_struct(#name, #num_fields)?;
-
-                    #(
-                        #fields
-                    )*
-
-                    state.end()
+                } else {
+                    quote! {
+                        serializer.serialize_unit_struct(#name)
+                    }
                 }
             }
             _ => unimplemented!(),

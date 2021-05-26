@@ -26,7 +26,7 @@ pub mod editor_bridge {
 }
 
 pub mod prelude {
-    pub use crate::component::{Component, ComponentCtx, ComponentRenderCtx};
+    pub use crate::component::{Component, ComponentCtx, ComponentPickCtx, ComponentRenderCtx};
     pub use crate::inspect::Inspect;
     pub use crate::node::*;
     pub use crate::plugin::{Plugin, PluginCtx, PluginInitCtx, PluginRenderCtx, Plugins};
@@ -34,4 +34,11 @@ pub mod prelude {
     pub use crate::render::prelude::*;
     pub use crate::tree::Tree;
     pub use crate::types::*;
+}
+
+#[macro_export]
+macro_rules! crate_path {
+    ($($tt:tt)*) => {
+        $crate$($tt)*
+    };
 }

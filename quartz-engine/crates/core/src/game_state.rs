@@ -104,7 +104,7 @@ impl GameState {
         }
     }
 
-    pub fn render(&mut self, render_resource: &RenderResource) {
+    pub fn render(&mut self, render_ctx: &mut RenderCtx, render_resource: &RenderResource) {
         if self.depth_texture.dimensions.width != render_resource.target_width()
             || self.depth_texture.dimensions.height != render_resource.target_height()
         {
@@ -117,29 +117,85 @@ impl GameState {
             );
         }
 
-        render_resource
-            .render(|render_ctx| {
-                let desc = RenderPassDescriptor {
-                    depth_attachment: Some(DepthAttachment::default_settings(
-                        self.depth_texture.view(),
-                    )),
-                    ..Default::default()
-                };
-                let mut render_pass = render_ctx.render_pass_empty(&desc);
+        let plugin_ctx = PluginRenderCtx {
+            tree: &mut self.tree,
+            plugins: &self.plugins,
+            render_resource: render_resource,
+            render_ctx,
+        };
 
-                let plugin_ctx = PluginRenderCtx {
-                    tree: &mut self.tree,
-                    plugins: &self.plugins,
-                    render_resource: render_resource,
-                    render_pass: &mut render_pass,
-                };
+        self.plugins.render(plugin_ctx);
 
-                self.plugins.render(plugin_ctx);
+        let desc = RenderPassDescriptor {
+            depth_attachment: Some(DepthAttachment::default_settings(self.depth_texture.view())),
+            ..Default::default()
+        };
+        let mut render_pass = render_ctx.render_pass_empty(&desc);
 
-                self.tree
-                    .render(&self.plugins, render_resource, &mut render_pass);
-            })
-            .unwrap();
+        self.tree
+            .render(&self.plugins, &None, render_resource, &mut render_pass);
+    }
+
+    pub fn viewport_render(
+        &mut self,
+        camera: &Option<Mat4>,
+        render_ctx: &mut RenderCtx,
+        render_resource: &RenderResource,
+    ) {
+        if self.depth_texture.dimensions.width != render_resource.target_width()
+            || self.depth_texture.dimensions.height != render_resource.target_height()
+        {
+            self.depth_texture = Texture::new(
+                &TextureDescriptor::default_settings(D2::new(
+                    render_resource.target_width(),
+                    render_resource.target_height(),
+                )),
+                render_resource,
+            );
+        }
+
+        let plugin_ctx = PluginRenderCtx {
+            tree: &mut self.tree,
+            plugins: &self.plugins,
+            render_resource: render_resource,
+            render_ctx,
+        };
+
+        self.plugins.viewport_render(plugin_ctx);
+
+        let desc = RenderPassDescriptor {
+            depth_attachment: Some(DepthAttachment::default_settings(self.depth_texture.view())),
+            ..Default::default()
+        };
+        let mut render_pass = render_ctx.render_pass_empty(&desc);
+
+        self.tree
+            .viewport_render(&self.plugins, camera, render_resource, &mut render_pass);
+    }
+
+    pub fn viewport_pick_render(
+        &mut self,
+        camera: &Mat4,
+        pipeline: &RenderPipeline,
+        texture: &Texture2d<format::Depth32Float>,
+        render_ctx: &mut RenderCtx,
+        render_resource: &RenderResource,
+    ) {
+        let desc = RenderPassDescriptor {
+            color_attachments: vec![],
+            depth_attachment: Some(DepthAttachment::default_settings(texture.view())),
+            ..Default::default()
+        };
+
+        let mut render_pass = render_ctx.render_pass(&desc, pipeline);
+
+        self.tree.viewport_pick_render(
+            &self.plugins,
+            camera,
+            pipeline,
+            render_resource,
+            &mut render_pass,
+        );
     }
 
     pub fn serialize_tree<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {

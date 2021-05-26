@@ -292,8 +292,6 @@ impl<'a, 'de> DeserializeSeed<'de> for NodeDeserializer<'a> {
             }
 
             fn visit_seq<V: SeqAccess<'de>>(self, mut seq: V) -> Result<Self::Value, V::Error> {
-                println!("{:?}", seq.size_hint());
-
                 Ok(Node {
                     name: seq
                         .next_element()?
@@ -450,8 +448,6 @@ impl<'a, 'de> DeserializeSeed<'de> for ComponentPodDeserializer<'a> {
                 Ok(component)
             }
         }
-
-        println!("deasdasd");
 
         const FIELDS: &[&str] = &["type", "component"];
         deserializer.deserialize_struct(

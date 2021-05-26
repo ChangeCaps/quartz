@@ -163,7 +163,7 @@ impl Plugins {
                 tree: ctx.tree,
                 plugins: ctx.plugins,
                 render_resource: ctx.render_resource,
-                render_pass: ctx.render_pass,
+                render_ctx: ctx.render_ctx,
             };
 
             self.get_mut_dyn(id, |plugin| {
@@ -178,7 +178,7 @@ impl Plugins {
                 tree: ctx.tree,
                 plugins: ctx.plugins,
                 render_resource: ctx.render_resource,
-                render_pass: ctx.render_pass,
+                render_ctx: ctx.render_ctx,
             };
 
             self.get_mut_dyn(id, |plugin| {
@@ -272,11 +272,11 @@ pub struct PluginCtx<'a> {
     pub render_resource: &'a RenderResource,
 }
 
-pub struct PluginRenderCtx<'a, 'b, 'c> {
+pub struct PluginRenderCtx<'a, 'b> {
     pub tree: &'a mut Tree,
     pub plugins: &'a Plugins,
     pub render_resource: &'a RenderResource,
-    pub render_pass: &'a mut EmptyRenderPass<'b, 'c, format::TargetFormat, format::Depth32Float>,
+    pub render_ctx: &'a mut RenderCtx<'b>,
 }
 
 #[allow(unused_variables)]

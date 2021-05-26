@@ -19,6 +19,7 @@ pub struct ComponentCtx<'a> {
 
 pub struct ComponentRenderCtx<'a, 'b, 'c> {
     //pub global_transform: &'a Transform,
+    pub viewport_camera: &'a Option<Mat4>,
     pub render_resource: &'a RenderResource,
     pub tree: &'a Tree,
     pub plugins: &'a Plugins,
@@ -26,6 +27,17 @@ pub struct ComponentRenderCtx<'a, 'b, 'c> {
     pub transform: &'a Transform,
     pub global_transform: &'a Transform,
     pub render_pass: &'a mut EmptyRenderPass<'b, 'c, format::TargetFormat, format::Depth32Float>,
+}
+
+pub struct ComponentPickCtx<'a, 'b, 'c> {
+    pub viewport_camera: &'a Mat4,
+    pub render_resource: &'a RenderResource,
+    pub tree: &'a Tree,
+    pub plugins: &'a Plugins,
+    pub node_id: &'a NodeId,
+    pub transform: &'a Transform,
+    pub global_transform: &'a Transform,
+    pub render_pass: &'a mut RenderPass<'b, 'c, format::TargetFormat, format::Depth32Float>,
 }
 
 pub trait InitComponent: Component {
@@ -77,6 +89,13 @@ pub trait Component: 'static {
         self.render(plugins, ctx);
     }
 
+    fn viewport_pick_render(
+        &mut self,
+        plugins: <Self::Plugins as PluginFetch<'_>>::Item,
+        ctx: ComponentPickCtx,
+    ) {
+    }
+
     fn despawn(&mut self, plugins: <Self::Plugins as PluginFetch<'_>>::Item, ctx: ComponentCtx) {}
 }
 
@@ -103,6 +122,8 @@ pub trait ComponentPod: Reflect + Any {
     fn update(&mut self, plugins: &Plugins, ctx: ComponentCtx);
     fn editor_update(&mut self, plugins: &Plugins, ctx: ComponentCtx);
     fn render(&mut self, plugins: &Plugins, ctx: ComponentRenderCtx);
+    fn viewport_render(&mut self, plugins: &Plugins, ctx: ComponentRenderCtx);
+    fn viewport_pick_render(&mut self, plugins: &Plugins, ctx: ComponentPickCtx);
     fn despawn(&mut self, plugins: &Plugins, ctx: ComponentCtx);
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
@@ -139,6 +160,18 @@ impl<T: Component + Reflect> ComponentPod for T {
     fn render(&mut self, plugins: &Plugins, ctx: ComponentRenderCtx) {
         T::Plugins::fetch(plugins, |plugins| {
             Component::render(self, plugins, ctx);
+        });
+    }
+
+    fn viewport_render(&mut self, plugins: &Plugins, ctx: ComponentRenderCtx) {
+        T::Plugins::fetch(plugins, |plugins| {
+            Component::viewport_render(self, plugins, ctx);
+        });
+    }
+
+    fn viewport_pick_render(&mut self, plugins: &Plugins, ctx: ComponentPickCtx) {
+        T::Plugins::fetch(plugins, |plugins| {
+            Component::viewport_pick_render(self, plugins, ctx);
         });
     }
 

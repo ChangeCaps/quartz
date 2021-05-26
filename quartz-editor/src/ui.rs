@@ -13,7 +13,7 @@ impl EditorState {
         self.top_panel_ui(render_resource);
         self.left_panel_ui();
         self.inspector_panel_ui(render_resource);
-        self.view_port_ui(render_resource);
+        self.viewport_ui(render_resource);
     }
 
     pub fn top_panel_ui(&mut self, render_resource: &mut RenderResource) {
@@ -126,30 +126,93 @@ impl EditorState {
         }
     }
 
-    pub fn view_port_ui(&mut self, render_resource: &mut RenderResource) {
+    pub fn viewport_ui(&mut self, render_resource: &mut RenderResource) {
         let textures = &mut self.egui_textures;
         let game = &mut self.game;
+        let viewports = &mut self.viewports;
 
         CentralPanel::default().show(&self.egui_ctx, |ui| {
             if game.is_some() {
-                if let Some(render_texture) = textures.get_mut(&0) {
-                    let view_port_size = ui.available_size();
+                let mut view_port_size = ui.available_size();
+                view_port_size.y /= viewports.len() as f32;
 
-                    ui.add(widgets::Image::new(TextureId::User(0), view_port_size));
-
-                    let view_port_width = view_port_size.x.floor() as u32;
-                    let view_port_height = view_port_size.y.floor() as u32;
-
-                    if view_port_width != render_texture.dimensions.width
-                        || view_port_height != render_texture.dimensions.height
-                    {
-                        *render_texture = Texture2d::new(
-                            &TextureDescriptor::default_settings(D2::new(
-                                view_port_width,
-                                view_port_height,
-                            )),
-                            render_resource,
+                for viewport in viewports {
+                    if let Some(render_texture) = textures.get_mut(&viewport.texture_id) {
+                        let response = ui.add(
+                            widgets::Image::new(
+                                TextureId::User(viewport.texture_id),
+                                view_port_size,
+                            )
+                            .sense(Sense::drag()),
                         );
+
+                        let view_port_width = view_port_size.x.floor() as u32;
+                        let view_port_height = view_port_size.y.floor() as u32;
+
+                        let aspect = view_port_width as f32 / view_port_height as f32;
+
+                        if view_port_width != render_texture.dimensions.width
+                            || view_port_height != render_texture.dimensions.height
+                        {
+                            *render_texture = Texture2d::new(
+                                &TextureDescriptor::default_settings(D2::new(
+                                    view_port_width,
+                                    view_port_height,
+                                )),
+                                render_resource,
+                            );
+                        }
+
+                        if let ViewportType::Editor { camera } = &mut viewport.ty {
+                            camera.projection.aspect = aspect;
+
+                            if response.dragged_by(PointerButton::Middle) {
+                                let local_x = camera.transform.rotation * Vec3::X;
+                                let local_y = camera.transform.rotation * Vec3::Y;
+                                let local_z = camera.transform.rotation * Vec3::Z;
+
+                                if ui.input().modifiers.shift {
+                                    camera.transform.translation -=
+                                        local_x * ui.input().pointer.delta().x * 0.01;
+                                    camera.transform.translation +=
+                                        local_y * ui.input().pointer.delta().y * 0.01;
+                                } else {
+                                    let delta = ui.input().pointer.delta();
+                                    camera.euler.x -= delta.x * 0.002;
+                                    camera.euler.y -= delta.y * 0.002;
+
+                                    camera.transform.rotation = Quat::from_euler(
+                                        EulerRot::YXZ,
+                                        camera.euler.x,
+                                        camera.euler.y,
+                                        0.0,
+                                    );
+
+                                    if ui.input().key_down(Key::W) {
+                                        camera.transform.translation -= local_z;
+                                    }
+
+                                    if ui.input().key_down(Key::S) {
+                                        camera.transform.translation += local_z;
+                                    }
+
+                                    if ui.input().key_down(Key::A) {
+                                        camera.transform.translation -= local_x;
+                                    }
+
+                                    if ui.input().key_down(Key::D) {
+                                        camera.transform.translation += local_x;
+                                    }
+                                }
+                            }
+
+                            if response.hovered() {
+                                let local_z = camera.transform.rotation * Vec3::Z;
+                                let delta = ui.input().scroll_delta.y * 0.05;
+
+                                camera.transform.translation -= local_z * delta;
+                            }
+                        }
                     }
                 }
             }

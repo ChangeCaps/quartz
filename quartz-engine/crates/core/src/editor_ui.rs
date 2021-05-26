@@ -38,23 +38,39 @@ impl Tree {
     ) {
         let popup_id = ui.make_persistent_id("add_node_popup");
 
-        let add_node_response = ui.button("Spawn Node");
-
         ui.separator();
+
+        for id in self.base.clone() {
+            self.node_ui(&id, components, plugins, ui, selected_node);
+        }
+
+        let add_node_response = ui.button("+");
 
         if add_node_response.clicked() {
             *selected_node = None;
             ui.memory().toggle_popup(popup_id);
         }
 
-        for id in self.base.clone() {
-            self.node_ui(&id, components, plugins, ui, selected_node);
-        }
-
         if selected_node.is_none() {
             popup::popup_below_widget(ui, popup_id, &add_node_response, |ui| {
                 self.add_node_popup(components, plugins, selected_node, ui);
             });
+        }
+
+        if add_node_response.hovered() && ui.input().pointer.any_released() {
+            if let Some(dragged) = ui
+                .memory()
+                .id_data_temp
+                .get_or_default::<Option<NodeId>>(Id::new("tree_drag"))
+            {
+                self.set_parent(dragged, None);
+            }
+        }
+
+        if ui.input().pointer.any_released() {
+            ui.memory()
+                .id_data_temp
+                .insert::<Option<NodeId>>(Id::new("tree_drag"), None);
         }
     }
 
@@ -73,15 +89,17 @@ impl Tree {
 
             let popup_id = ui.make_persistent_id("add_node_popup");
 
-            let response = ui
+            let (response, add_response) = ui
                 .horizontal(|ui| {
-                    if ui.button(&node.name).clicked() {
+                    let response = ui.add(Button::new(&node.name).sense(Sense::click_and_drag()));
+
+                    if response.clicked() {
                         *selected_node = Some(*node_id);
                     }
 
-                    let response = ui.button("+");
+                    let add_response = ui.button("+");
 
-                    if response.clicked() {
+                    if add_response.clicked() {
                         *selected_node = Some(*node_id);
 
                         ui.memory().toggle_popup(popup_id);
@@ -91,13 +109,48 @@ impl Tree {
                         self.despawn(*node_id);
                     }
 
-                    response
+                    (response, add_response)
                 })
                 .inner;
 
-            if !children.is_empty() {
+            if response.drag_started() {
+                ui.memory()
+                    .id_data_temp
+                    .insert(Id::new("tree_drag"), Some(*node_id));
+            }
+
+            let dragged = {
+                ui.memory()
+                    .id_data_temp
+                    .get_or_default::<Option<NodeId>>(Id::new("tree_drag"))
+                    .clone()
+            };
+
+            if response.hovered() && ui.input().pointer.any_released() {
+                if let Some(dragged) = dragged {
+                    if dragged != *node_id {
+                        self.set_parent(dragged, node_id);
+                    }
+                }
+            }
+
+            let as_child = {
+                if let Some(dragged) = dragged {
+                    let is_child = children.iter().find(|c| **c == dragged).is_some();
+
+                    ui.rect_contains_pointer(response.rect) && !is_child && dragged != *node_id
+                } else {
+                    false
+                }
+            };
+
+            if !children.is_empty() || as_child {
                 ui.vertical(|ui| {
                     ui.indent(node_id, |ui| {
+                        if as_child {
+                            self.node_ui(&dragged.unwrap(), components, plugins, ui, selected_node);
+                        }
+
                         for child in children {
                             self.node_ui(&child, components, plugins, ui, selected_node);
                         }
@@ -110,7 +163,7 @@ impl Tree {
             }
 
             if selected {
-                popup::popup_below_widget(ui, popup_id, &response, |ui| {
+                popup::popup_below_widget(ui, popup_id, &add_response, |ui| {
                     self.add_node_popup(components, plugins, selected_node, ui);
                 });
             }

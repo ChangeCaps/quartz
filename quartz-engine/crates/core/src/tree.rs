@@ -36,6 +36,10 @@ impl Tree {
         id
     }
 
+    pub fn nodes(&self) -> Vec<NodeId> {
+        self.nodes.keys().cloned().collect()
+    }
+
     pub fn spawn(&mut self, component: impl ToPod) -> NodeId {
         let id = self.generate_id();
         let node = Node::new(component.to_pod());
@@ -55,7 +59,7 @@ impl Tree {
 
         if self.nodes.contains_key(&parent_id) {
             let child_id = self.spawn(component);
-            self.set_parent(parent_id, child_id);
+            self.set_parent(child_id, parent_id);
 
             Some(child_id)
         } else {
@@ -82,22 +86,32 @@ impl Tree {
         }
     }
 
-    pub fn set_parent(&mut self, parent: impl Into<NodeId>, child: impl Into<NodeId>) {
+    pub fn set_parent(&mut self, child: impl Into<NodeId>, parent: impl Into<Option<NodeId>>) {
         let parent = parent.into();
         let child = child.into();
 
-        if let Some(parent) = self.parents.remove(&child) {
-            if let Some(children) = self.children.get_mut(&parent) {
-                children.retain(|c| *c != child);
+        if let Some(parent) = parent {
+            if let Some(parent) = self.parents.remove(&child) {
+                if let Some(children) = self.children.get_mut(&parent) {
+                    children.retain(|c| *c != child);
+                }
             }
-        }
 
-        self.base.remove(&child);
-        self.parents.insert(child, parent);
-        self.children
-            .entry(parent)
-            .or_insert(Vec::new())
-            .push(child);
+            self.base.remove(&child);
+            self.parents.insert(child, parent);
+            self.children
+                .entry(parent)
+                .or_insert(Vec::new())
+                .push(child);
+        } else {
+            if let Some(parent) = self.parents.remove(&child) {
+                if let Some(children) = self.children.get_mut(&parent) {
+                    children.retain(|c| *c != child);
+                }
+            }
+
+            self.base.insert(child);
+        }
     }
 
     pub fn get_children(&self, parent: impl Into<NodeId>) -> &Vec<NodeId> {
@@ -138,7 +152,7 @@ impl Tree {
     }
 
     pub fn update(&mut self, plugins: &Plugins, render_resource: &RenderResource) {
-        for node_id in self.nodes.keys().cloned().collect::<Vec<_>>() {
+        for node_id in self.nodes() {
             if let Some(mut node) = self.get_node(&node_id) {
                 node.update(plugins, &node_id, self, render_resource);
             }
@@ -146,7 +160,7 @@ impl Tree {
     }
 
     pub fn editor_update(&mut self, plugins: &Plugins, render_resource: &RenderResource) {
-        for node_id in self.nodes.keys().cloned().collect::<Vec<_>>() {
+        for node_id in self.nodes() {
             if let Some(mut node) = self.get_node(&node_id) {
                 node.editor_update(plugins, &node_id, self, render_resource);
             }
@@ -175,12 +189,69 @@ impl Tree {
     pub fn render(
         &mut self,
         plugins: &Plugins,
+        viewport_camera: &Option<Mat4>,
         render_resource: &RenderResource,
         render_pass: &mut EmptyRenderPass<'_, '_, format::TargetFormat, format::Depth32Float>,
     ) {
-        for id in self.nodes.keys().cloned().collect::<Vec<_>>() {
+        for id in self.nodes() {
             if let Some(mut node) = self.get_node(&id) {
-                node.render(plugins, &id, self, render_resource, render_pass);
+                node.render(
+                    plugins,
+                    &id,
+                    self,
+                    viewport_camera,
+                    render_resource,
+                    render_pass,
+                );
+            }
+        }
+    }
+
+    pub fn viewport_render(
+        &mut self,
+        plugins: &Plugins,
+        viewport_camera: &Option<Mat4>,
+        render_resource: &RenderResource,
+        render_pass: &mut EmptyRenderPass<'_, '_, format::TargetFormat, format::Depth32Float>,
+    ) {
+        for id in self.nodes() {
+            if let Some(mut node) = self.get_node(&id) {
+                node.viewport_render(
+                    plugins,
+                    &id,
+                    self,
+                    viewport_camera,
+                    render_resource,
+                    render_pass,
+                );
+            }
+        }
+    }
+
+    pub fn viewport_pick_render(
+        &mut self,
+        plugins: &Plugins,
+        viewport_camera: &Mat4,
+        render_pipeline: &RenderPipeline,
+        render_resource: &RenderResource,
+        render_pass: &mut RenderPass<'_, '_, format::TargetFormat, format::Depth32Float>,
+    ) {
+        for node_id in self.nodes() {
+            if let Some(mut node) = self.get_node(&node_id) {
+                let id: f32 = unsafe { std::mem::transmute(node_id.0 as u32) };
+
+                render_pipeline.bind_uniform("NodeId", &id);
+                render_pipeline.bind_uniform("Camera", viewport_camera);
+                render_pipeline.bind_uniform("Transform", &node.transform.matrix());
+
+                node.viewport_pick_render(
+                    plugins,
+                    &node_id,
+                    self,
+                    viewport_camera,
+                    render_resource,
+                    render_pass,
+                );
             }
         }
     }

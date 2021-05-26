@@ -10,6 +10,11 @@ use std::collections::HashMap;
 use std::path::Path;
 use winit::event::{self, ElementState, MouseScrollDelta, VirtualKeyCode as VKey, WindowEvent};
 
+#[cfg(debug_assertions)]
+pub const LIB_PATH: &'static str = "target/debug";
+#[cfg(not(debug_assertions))]
+pub const LIB_PATH: &'static str = "target/release";
+
 pub struct GameState {
     pub state: quartz_engine::core::game_state::GameState,
     pub bridge: Bridge,
@@ -55,6 +60,36 @@ impl GameState {
     }
 }
 
+pub struct Camera {
+    pub projection: PerspectiveProjection,
+    pub transform: Transform,
+    pub euler: Vec2,
+}
+
+impl Camera {
+    pub fn new() -> Self {
+        Self {
+            projection: Default::default(),
+            transform: Transform::IDENTITY,
+            euler: Vec2::new(0.0, 0.0),
+        }
+    }
+
+    pub fn view_proj(&self) -> Mat4 {
+        self.projection.matrix() * self.transform.matrix().inverse()
+    }
+}
+
+pub enum ViewportType {
+    Game,
+    Editor { camera: Camera },
+}
+
+pub struct Viewport {
+    pub texture_id: u64,
+    pub ty: ViewportType,
+}
+
 pub struct EditorState {
     pub egui_pipeline: RenderPipeline,
     pub egui_ctx: CtxRef,
@@ -68,6 +103,7 @@ pub struct EditorState {
     pub project: Project,
     pub building: Option<std::process::Child>,
     pub selected_node: Option<NodeId>,
+    pub viewports: Vec<Viewport>,
 }
 
 impl EditorState {
@@ -93,14 +129,22 @@ impl EditorState {
         );
         let egui_sampler = Sampler::new(&Default::default(), render_resource);
 
-        let render_texture = Texture2d::new(
-            &TextureDescriptor::default_settings(D2::new(500, 500)),
-            render_resource,
-        );
-
         let mut egui_textures = HashMap::new();
 
-        egui_textures.insert(0, render_texture);
+        egui_textures.insert(
+            0,
+            Texture2d::new(
+                &TextureDescriptor::default_settings(D2::new(500, 500)),
+                render_resource,
+            ),
+        );
+        egui_textures.insert(
+            1,
+            Texture2d::new(
+                &TextureDescriptor::default_settings(D2::new(500, 500)),
+                render_resource,
+            ),
+        );
 
         Self {
             egui_pipeline,
@@ -115,18 +159,35 @@ impl EditorState {
             project: Project::new("../testproject").unwrap(),
             building: None,
             selected_node: None,
+            viewports: vec![
+                Viewport {
+                    texture_id: 0,
+                    ty: ViewportType::Editor {
+                        camera: Camera::new(),
+                    },
+                },
+                Viewport {
+                    texture_id: 1,
+                    ty: ViewportType::Game,
+                },
+            ],
         }
     }
 
     pub fn build(&mut self) -> std::io::Result<()> {
         log::info!("Building project");
 
-        let child = std::process::Command::new("cargo")
-            .arg("build")
-            //.arg("--release")
+        let mut command = std::process::Command::new("cargo");
+        command.arg("build");
+
+        #[cfg(not(debug_assertions))]
+        command.arg("--release");
+
+        command
             .arg("--manifest-path")
-            .arg(&self.project.path.join("Cargo.toml"))
-            .spawn()?;
+            .arg(&self.project.path.join("Cargo.toml"));
+
+        let child = command.spawn()?;
 
         self.building = Some(child);
 
@@ -196,12 +257,12 @@ impl EditorState {
 
                 GameState::deserialize(
                     &mut deserializer,
-                    &self.project.path.join("target/debug/testproject.dll"),
+                    &self.project.path.join(LIB_PATH).join("testproject.dll"),
                     render_resource,
                 )
             } else {
                 GameState::load(
-                    &self.project.path.join("target/debug/testproject.dll"),
+                    &self.project.path.join(LIB_PATH).join("testproject.dll"),
                     render_resource,
                 )
             };
@@ -332,6 +393,7 @@ impl State for EditorState {
                             VKey::T => Some(Key::T),
                             VKey::U => Some(Key::U),
                             VKey::V => Some(Key::V),
+                            VKey::W => Some(Key::W),
                             VKey::X => Some(Key::X),
                             VKey::Y => Some(Key::Y),
                             VKey::Z => Some(Key::Z),
@@ -366,8 +428,8 @@ impl State for EditorState {
                 WindowEvent::MouseInput { button, state, .. } => {
                     let button = match button {
                         MouseButton::Left => Some(PointerButton::Primary),
-                        MouseButton::Middle => Some(PointerButton::Primary),
-                        MouseButton::Right => Some(PointerButton::Primary),
+                        MouseButton::Middle => Some(PointerButton::Middle),
+                        MouseButton::Right => Some(PointerButton::Secondary),
                         _ => None,
                     };
 
@@ -435,12 +497,12 @@ impl State for EditorState {
 
                 for x in 0..egui_texture.width {
                     for y in 0..egui_texture.height {
-                        let color = pixels.next().unwrap();
+                        let color = Rgba::from(pixels.next().unwrap());
                         data[x][y] = Color::rgba(
-                            color.r() as f32 / 255.0,
-                            color.g() as f32 / 255.0,
-                            color.b() as f32 / 255.0,
-                            color.a() as f32 / 255.0 * 2.0,
+                            color.r(), 
+                            color.g(), 
+                            color.b(), 
+                            color.a()
                         );
                     }
                 }
@@ -451,11 +513,32 @@ impl State for EditorState {
                 .bind("tex_sampler", self.egui_sampler.clone());
         }
 
-        if let Some(render_texture) = self.egui_textures.get(&0) {
-            if let Some(state) = &mut self.game {
-                render_resource.target_texture(render_texture);
+        // FIXME: calling render twice is bad and inefficient
 
-                state.state.render(render_resource);
+        for viewport in &self.viewports {
+            if let Some(texture) = self.egui_textures.get(&viewport.texture_id) {
+                render_resource.target_texture(texture);
+
+                let game = &mut self.game;
+
+                render_resource
+                    .render(|ctx| {
+                        if let Some(state) = game {
+                            match &viewport.ty {
+                                ViewportType::Editor { camera } => {
+                                    state.state.viewport_render(
+                                        &Some(camera.view_proj()),
+                                        ctx,
+                                        render_resource,
+                                    );
+                                }
+                                ViewportType::Game => {
+                                    state.state.render(ctx, render_resource);
+                                }
+                            }
+                        }
+                    })
+                    .unwrap();
 
                 render_resource.target_swapchain();
             }
@@ -487,13 +570,15 @@ impl State for EditorState {
                     let mut color = Vec::with_capacity(mesh.vertices.len());
 
                     for vertex in &mesh.vertices {
+                        let v_color = Rgba::from(vertex.color);
+
                         pos.push(Vec2::new(vertex.pos.x, vertex.pos.y));
                         uv.push(Vec2::new(vertex.uv.x, vertex.uv.y));
                         color.push(Color::rgba(
-                            vertex.color.r() as f32 / 255.0,
-                            vertex.color.g() as f32 / 255.0,
-                            vertex.color.b() as f32 / 255.0,
-                            vertex.color.a() as f32 / 255.0 * 2.0,
+                            v_color.r() * 4.0,
+                            v_color.g() * 4.0,
+                            v_color.b() * 4.0,
+                            v_color.a() * 4.0,
                         ));
                     }
 

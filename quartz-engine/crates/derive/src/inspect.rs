@@ -1,4 +1,5 @@
 use proc_macro2::{Span, TokenStream};
+use proc_macro_crate::FoundCrate;
 use quote::{quote, quote_spanned};
 use syn::spanned::Spanned;
 use syn::{
@@ -68,7 +69,7 @@ fn add_trait_bounds(mut generics: Generics) -> Generics {
         if let GenericParam::Type(type_param) = param {
             type_param
                 .bounds
-                .push(parse_quote!(quartz_engine::inspect::Inspect));
+                .push(parse_quote!(quartz_engine::core::inspect::Inspect));
         }
     }
 

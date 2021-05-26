@@ -11,9 +11,7 @@ macro_rules! impl_inspect {
     (drag => $ty:path) => {
         impl Inspect for $ty {
             fn inspect(&mut self, ui: &mut Ui) -> bool {
-                let prev = self.clone();
-                ui.add(DragValue::new(self));
-                *self == prev
+                ui.add(DragValue::new(self).speed(0.1)).changed()
             }
         }
     };
@@ -22,9 +20,7 @@ macro_rules! impl_inspect {
 macro_rules! inspect {
     (drag $(($speed:expr))? $ui:ident => $value:expr) => {
         {
-            let prev = $value.clone();
-            $ui.add(DragValue::new($value)$(.speed($speed))?);
-            *$value == prev
+            $ui.add(DragValue::new($value)$(.speed($speed))?).changed()
         }
     };
     (inspect $ui:ident => $value:expr) => {
@@ -44,6 +40,7 @@ macro_rules! inspect {
 impl_inspect!(drag => i16);
 impl_inspect!(drag => i32);
 impl_inspect!(drag => i64);
+impl_inspect!(drag => isize);
 
 impl_inspect!(drag => f32);
 impl_inspect!(drag => f64);
@@ -52,6 +49,17 @@ impl_inspect!(drag => u8);
 impl_inspect!(drag => u16);
 impl_inspect!(drag => u32);
 impl_inspect!(drag => u64);
+impl_inspect!(drag => usize);
+
+impl Inspect for bool {
+    fn inspect(&mut self, ui: &mut Ui) -> bool {
+        let prev = *self;
+
+        ui.checkbox(self, "");
+
+        *self != prev
+    }
+}
 
 impl Inspect for String {
     fn inspect(&mut self, ui: &mut Ui) -> bool {
@@ -98,6 +106,23 @@ impl Inspect for Vec4 {
             columns[2].add(DragValue::new(&mut self.z).speed(0.1));
             columns[3].add(DragValue::new(&mut self.w).speed(0.1));
         });
+
+        *self == prev
+    }
+}
+
+impl Inspect for Color {
+    fn inspect(&mut self, ui: &mut Ui) -> bool {
+        let prev = self.clone();
+
+        let mut color = [self.r, self.g, self.b, self.a];
+
+        ui.color_edit_button_rgba_unmultiplied(&mut color);
+
+        self.r = color[0];
+        self.g = color[1];
+        self.b = color[2];
+        self.a = color[3];
 
         *self == prev
     }
