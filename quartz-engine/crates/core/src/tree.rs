@@ -1,6 +1,7 @@
 use crate::component::*;
 use crate::node::*;
 use crate::plugin::*;
+use crate::transform::*;
 use quartz_render::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
@@ -140,29 +141,29 @@ impl Tree {
         &mut self,
         node_id: &NodeId,
         plugins: &Plugins,
-        render_resource: &RenderResource,
+        instance: &Instance,
     ) {
         if let Some(mut node) = self.get_node(node_id) {
-            node.despawn(plugins, node_id, self, render_resource);
+            node.despawn(plugins, node_id, self, instance);
 
             for child in self.get_children(*node_id).clone() {
-                self.despawn_recursive(&child, plugins, render_resource);
+                self.despawn_recursive(&child, plugins, instance);
             }
         }
     }
 
-    pub fn update(&mut self, plugins: &Plugins, render_resource: &RenderResource) {
+    pub fn update(&mut self, plugins: &Plugins, instance: &Instance) {
         for node_id in self.nodes() {
             if let Some(mut node) = self.get_node(&node_id) {
-                node.update(plugins, &node_id, self, render_resource);
+                node.update(plugins, &node_id, self, instance);
             }
         }
     }
 
-    pub fn editor_update(&mut self, plugins: &Plugins, render_resource: &RenderResource) {
+    pub fn editor_update(&mut self, plugins: &Plugins, instance: &Instance) {
         for node_id in self.nodes() {
             if let Some(mut node) = self.get_node(&node_id) {
-                node.editor_update(plugins, &node_id, self, render_resource);
+                node.editor_update(plugins, &node_id, self, instance);
             }
         }
     }
@@ -190,19 +191,12 @@ impl Tree {
         &mut self,
         plugins: &Plugins,
         viewport_camera: &Option<Mat4>,
-        render_resource: &RenderResource,
-        render_pass: &mut EmptyRenderPass<'_, '_, format::TargetFormat, format::Depth32Float>,
+        instance: &Instance,
+        render_pass: &mut EmptyRenderPass<'_, '_, '_, format::TargetFormat, format::Depth32Float>,
     ) {
         for id in self.nodes() {
             if let Some(mut node) = self.get_node(&id) {
-                node.render(
-                    plugins,
-                    &id,
-                    self,
-                    viewport_camera,
-                    render_resource,
-                    render_pass,
-                );
+                node.render(plugins, &id, self, viewport_camera, instance, render_pass);
             }
         }
     }
@@ -211,19 +205,12 @@ impl Tree {
         &mut self,
         plugins: &Plugins,
         viewport_camera: &Option<Mat4>,
-        render_resource: &RenderResource,
-        render_pass: &mut EmptyRenderPass<'_, '_, format::TargetFormat, format::Depth32Float>,
+        instance: &Instance,
+        render_pass: &mut EmptyRenderPass<'_, '_, '_, format::TargetFormat, format::Depth32Float>,
     ) {
         for id in self.nodes() {
             if let Some(mut node) = self.get_node(&id) {
-                node.viewport_render(
-                    plugins,
-                    &id,
-                    self,
-                    viewport_camera,
-                    render_resource,
-                    render_pass,
-                );
+                node.viewport_render(plugins, &id, self, viewport_camera, instance, render_pass);
             }
         }
     }
@@ -233,8 +220,8 @@ impl Tree {
         plugins: &Plugins,
         viewport_camera: &Mat4,
         render_pipeline: &RenderPipeline,
-        render_resource: &RenderResource,
-        render_pass: &mut RenderPass<'_, '_, format::TargetFormat, format::Depth32Float>,
+        instance: &Instance,
+        render_pass: &mut RenderPass<'_, '_, '_, format::TargetFormat, format::Depth32Float>,
     ) {
         for node_id in self.nodes() {
             if let Some(mut node) = self.get_node(&node_id) {
@@ -249,7 +236,7 @@ impl Tree {
                     &node_id,
                     self,
                     viewport_camera,
-                    render_resource,
+                    instance,
                     render_pass,
                 );
             }

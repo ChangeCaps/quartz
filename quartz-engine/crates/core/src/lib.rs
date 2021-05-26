@@ -4,6 +4,7 @@ pub mod macros;
 pub mod node;
 pub mod plugin;
 pub mod reflect;
+pub mod transform;
 pub mod tree;
 pub mod types;
 

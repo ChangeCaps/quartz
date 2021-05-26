@@ -34,7 +34,7 @@ impl Plugin for Render3dPlugin {
             Shader::from_glsl(include_str!("pbr.vert"), include_str!("pbr.frag")).unwrap();
         let pbr_pipeline = RenderPipeline::new(
             PipelineDescriptor::default_settings(pbr_shader),
-            ctx.render_resource,
+            ctx.instance,
         )
         .unwrap();
 
@@ -45,15 +45,15 @@ impl Plugin for Render3dPlugin {
                 targets: vec![],
                 ..PipelineDescriptor::default_settings(shadow_shader)
             },
-            ctx.render_resource,
+            ctx.instance,
         )
         .unwrap();
 
-        let shadow_map_sampler = Sampler::new(&SamplerDescriptor::default(), ctx.render_resource);
+        let shadow_map_sampler = Sampler::new(&SamplerDescriptor::default(), ctx.instance);
 
         let directional_light_maps = Texture2dArray::new(
             &TextureDescriptor::default_settings(D2Array::new(2048, 2048, MAX_DIR_LIGHTS)),
-            ctx.render_resource,
+            ctx.instance,
         );
 
         pbr_pipeline.bind("DirectionalShadowMaps", directional_light_maps.view());
@@ -87,12 +87,12 @@ impl Plugin for Render3dPlugin {
                 if light.shadows {
                     let light_view_proj =
                         light.projection() * node.global_transform().matrix().inverse();
-    
+
                     self.shadow_pipeline
                         .bind_uniform("Camera", &light_view_proj);
                     self.shadow_pipeline
                         .bind_uniform("CameraPos", &node.global_transform().translation);
-    
+
                     let desc = RenderPassDescriptor::<format::TargetFormat> {
                         color_attachments: vec![],
                         depth_attachment: Some(DepthAttachment::default_settings(
@@ -100,21 +100,21 @@ impl Plugin for Render3dPlugin {
                         )),
                         ..Default::default()
                     };
-    
+
                     let mut pass = ctx.render_ctx.render_pass(&desc, &self.shadow_pipeline);
-    
+
                     for node_id in ctx.tree.nodes() {
                         if let Some(node) = ctx.tree.get_node(node_id) {
                             if let Some(mesh) = node.get_component::<ProceduralMesh3d>() {
                                 let model = node.global_transform().matrix();
-    
+
                                 self.shadow_pipeline.bind_uniform("Transform", &model);
                                 pass.draw_mesh(&mesh.mesh);
                             }
-    
+
                             if let Some(mesh) = node.get_component::<Mesh3d>() {
                                 let model = node.global_transform().matrix();
-    
+
                                 self.shadow_pipeline.bind_uniform("Transform", &model);
                                 pass.draw_mesh(&mesh.mesh);
                             }
@@ -271,7 +271,7 @@ impl Component for Camera3d {
     }
 
     fn editor_update(&mut self, plugins: &mut Render3dPlugin, ctx: ComponentCtx) {
-        let size = ctx.render_resource.target_size();
+        let size = ctx.instance.target_size();
         self.projection.aspect = size.x / size.y;
 
         let view_proj = self.projection.matrix() * ctx.global_transform.matrix().inverse();

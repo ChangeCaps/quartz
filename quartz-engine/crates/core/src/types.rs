@@ -1,18 +1,18 @@
 use crate::component::*;
 use crate::plugin::*;
 use crate::reflect::*;
-use quartz_render::render::RenderResource;
+use quartz_render::instance::Instance;
 
 pub struct Types<'a> {
-    pub render_resource: &'a RenderResource,
+    pub instance: &'a Instance,
     pub plugins: Plugins,
     pub components: Components,
 }
 
 impl<'a> Types<'a> {
-    pub fn new(render_resource: &'a RenderResource) -> Self {
+    pub fn new(instance: &'a Instance) -> Self {
         Self {
-            render_resource,
+            instance,
             plugins: Plugins::new(),
             components: Components::new(),
         }
@@ -24,7 +24,7 @@ impl<'a> Types<'a> {
 
     pub fn register_plugin<P: Plugin>(&mut self) {
         self.plugins.register_plugin::<P>(PluginInitCtx {
-            render_resource: &self.render_resource,
+            instance: &self.instance,
         });
     }
 }

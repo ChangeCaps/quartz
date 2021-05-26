@@ -16,7 +16,7 @@ pub fn derive_uniform(input: proc_macro::TokenStream) -> proc_macro::TokenStream
     let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
 
     let expanded = quote! {
-        impl #impl_generics #crate_path::render::uniform::Uniform
+        impl #impl_generics #crate_path::uniform::Uniform
             for #ident #type_generics #where_clause
         {
             fn alignment() -> u64 {
@@ -44,9 +44,9 @@ fn size(crate_path: &TokenStream, data: &Data) -> TokenStream {
                     let ty = &f.ty;
 
                     quote_spanned! {f.ident.as_ref().unwrap().span()=>
-                        #crate_path::render::uniform::aligned_size(
-                            <#ty as #crate_path::render::uniform::Uniform>::size(),
-                            <#ty as #crate_path::render::uniform::Uniform>::alignment()
+                        #crate_path::uniform::aligned_size(
+                            <#ty as #crate_path::uniform::Uniform>::size(),
+                            <#ty as #crate_path::uniform::Uniform>::alignment()
                         )
                     }
                 });
@@ -70,7 +70,7 @@ fn data(crate_path: &TokenStream, data: &Data) -> TokenStream {
                     let ty = &f.ty;
 
                     quote_spanned! {ident.span()=>
-                        #crate_path::render::uniform::append_aligned(&mut data, &self.#ident, #ty::alignment());
+                        #crate_path::uniform::append_aligned(&mut data, &self.#ident, #ty::alignment());
                     }
                 });
 

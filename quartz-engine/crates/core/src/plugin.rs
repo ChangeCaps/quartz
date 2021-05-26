@@ -1,4 +1,5 @@
 use crate::component::*;
+use crate::transform::*;
 use crate::tree::*;
 use quartz_render::prelude::*;
 use std::any::{Any, TypeId};
@@ -106,7 +107,7 @@ impl Plugins {
             let ctx = PluginCtx {
                 tree: ctx.tree,
                 plugins: ctx.plugins,
-                render_resource: ctx.render_resource,
+                instance: ctx.instance,
             };
 
             self.get_mut_dyn(id, |plugin| {
@@ -120,7 +121,7 @@ impl Plugins {
             let ctx = PluginCtx {
                 tree: ctx.tree,
                 plugins: ctx.plugins,
-                render_resource: ctx.render_resource,
+                instance: ctx.instance,
             };
 
             self.get_mut_dyn(id, |plugin| {
@@ -134,7 +135,7 @@ impl Plugins {
             let ctx = PluginCtx {
                 tree: ctx.tree,
                 plugins: ctx.plugins,
-                render_resource: ctx.render_resource,
+                instance: ctx.instance,
             };
 
             self.get_mut_dyn(id, |plugin| {
@@ -148,7 +149,7 @@ impl Plugins {
             let ctx = PluginCtx {
                 tree: ctx.tree,
                 plugins: ctx.plugins,
-                render_resource: ctx.render_resource,
+                instance: ctx.instance,
             };
 
             self.get_mut_dyn(id, |plugin| {
@@ -162,7 +163,7 @@ impl Plugins {
             let ctx = PluginRenderCtx {
                 tree: ctx.tree,
                 plugins: ctx.plugins,
-                render_resource: ctx.render_resource,
+                instance: ctx.instance,
                 render_ctx: ctx.render_ctx,
             };
 
@@ -177,7 +178,7 @@ impl Plugins {
             let ctx = PluginRenderCtx {
                 tree: ctx.tree,
                 plugins: ctx.plugins,
-                render_resource: ctx.render_resource,
+                instance: ctx.instance,
                 render_ctx: ctx.render_ctx,
             };
 
@@ -263,19 +264,19 @@ impl<T: Any> PluginAny for T {
 }
 
 pub struct PluginInitCtx<'a> {
-    pub render_resource: &'a RenderResource,
+    pub instance: &'a Instance,
 }
 
 pub struct PluginCtx<'a> {
     pub tree: &'a mut Tree,
     pub plugins: &'a Plugins,
-    pub render_resource: &'a RenderResource,
+    pub instance: &'a Instance,
 }
 
 pub struct PluginRenderCtx<'a, 'b> {
     pub tree: &'a mut Tree,
     pub plugins: &'a Plugins,
-    pub render_resource: &'a RenderResource,
+    pub instance: &'a Instance,
     pub render_ctx: &'a mut RenderCtx<'b>,
 }
 

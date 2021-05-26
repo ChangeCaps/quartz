@@ -1,6 +1,7 @@
 use crate::component::*;
 use crate::inspect::*;
 use crate::plugin::*;
+use crate::transform::*;
 use crate::tree::*;
 use egui::*;
 use quartz_render::prelude::*;
@@ -14,14 +15,6 @@ impl Into<NodeId> for &NodeId {
         *self
     }
 }
-
-/*
-impl Into<Option<NodeId>> for NodeId {
-    fn into(self) -> Option<NodeId> {
-        Some(self)
-    }
-}
-*/
 
 impl Into<Option<NodeId>> for &NodeId {
     fn into(self) -> Option<NodeId> {
@@ -74,7 +67,7 @@ impl Node {
         plugins: &Plugins,
         node_id: &NodeId,
         tree: &mut Tree,
-        render_resource: &RenderResource,
+        instance: &Instance,
         ui: &mut Ui,
     ) {
         ui.text_edit_singleline(&mut self.name);
@@ -92,7 +85,7 @@ impl Node {
                 plugins,
                 transform: &mut self.transform,
                 global_transform: &self.global_transform,
-                render_resource,
+                instance,
             };
 
             self.component.inspector_ui(plugins, ctx, ui);
@@ -104,7 +97,7 @@ impl Node {
         plugins: &Plugins,
         node_id: &NodeId,
         tree: &mut Tree,
-        render_resource: &RenderResource,
+        instance: &Instance,
     ) {
         let ctx = ComponentCtx {
             tree,
@@ -112,7 +105,7 @@ impl Node {
             plugins,
             transform: &mut self.transform,
             global_transform: &self.global_transform,
-            render_resource,
+            instance,
         };
 
         self.component.update(plugins, ctx);
@@ -123,7 +116,7 @@ impl Node {
         plugins: &Plugins,
         node_id: &NodeId,
         tree: &mut Tree,
-        render_resource: &RenderResource,
+        instance: &Instance,
     ) {
         let ctx = ComponentCtx {
             tree,
@@ -131,7 +124,7 @@ impl Node {
             plugins,
             transform: &mut self.transform,
             global_transform: &self.global_transform,
-            render_resource,
+            instance,
         };
 
         self.component.editor_update(plugins, ctx);
@@ -143,12 +136,12 @@ impl Node {
         node_id: &NodeId,
         tree: &mut Tree,
         viewport_camera: &Option<Mat4>,
-        render_resource: &RenderResource,
-        render_pass: &mut EmptyRenderPass<'_, '_, format::TargetFormat, format::Depth32Float>,
+        instance: &Instance,
+        render_pass: &mut EmptyRenderPass<'_, '_, '_, format::TargetFormat, format::Depth32Float>,
     ) {
         let ctx = ComponentRenderCtx {
             viewport_camera,
-            render_resource,
+            instance,
             node_id,
             tree,
             plugins,
@@ -166,12 +159,12 @@ impl Node {
         node_id: &NodeId,
         tree: &mut Tree,
         viewport_camera: &Option<Mat4>,
-        render_resource: &RenderResource,
-        render_pass: &mut EmptyRenderPass<'_, '_, format::TargetFormat, format::Depth32Float>,
+        instance: &Instance,
+        render_pass: &mut EmptyRenderPass<'_, '_, '_, format::TargetFormat, format::Depth32Float>,
     ) {
         let ctx = ComponentRenderCtx {
             viewport_camera,
-            render_resource,
+            instance,
             node_id,
             tree,
             plugins,
@@ -189,12 +182,12 @@ impl Node {
         node_id: &NodeId,
         tree: &mut Tree,
         viewport_camera: &Mat4,
-        render_resource: &RenderResource,
-        render_pass: &mut RenderPass<'_, '_, format::TargetFormat, format::Depth32Float>,
+        instance: &Instance,
+        render_pass: &mut RenderPass<'_, '_, '_, format::TargetFormat, format::Depth32Float>,
     ) {
         let ctx = ComponentPickCtx {
             viewport_camera,
-            render_resource,
+            instance,
             node_id,
             tree,
             plugins,
@@ -211,7 +204,7 @@ impl Node {
         plugins: &Plugins,
         node_id: &NodeId,
         tree: &mut Tree,
-        render_resource: &RenderResource,
+        instance: &Instance,
     ) {
         let ctx = ComponentCtx {
             tree,
@@ -219,7 +212,7 @@ impl Node {
             plugins,
             transform: &mut self.transform,
             global_transform: &self.global_transform,
-            render_resource,
+            instance,
         };
 
         self.component.despawn(plugins, ctx);

@@ -1,6 +1,7 @@
 use crate::node::*;
 use crate::plugin::*;
 use crate::reflect::*;
+use crate::transform::*;
 use crate::tree::*;
 use egui::Ui;
 use quartz_render::prelude::*;
@@ -14,30 +15,30 @@ pub struct ComponentCtx<'a> {
     pub node_id: &'a NodeId,
     pub transform: &'a mut Transform,
     pub global_transform: &'a Transform,
-    pub render_resource: &'a RenderResource,
+    pub instance: &'a Instance,
 }
 
-pub struct ComponentRenderCtx<'a, 'b, 'c> {
+pub struct ComponentRenderCtx<'a, 'b, 'c, 'd> {
     //pub global_transform: &'a Transform,
     pub viewport_camera: &'a Option<Mat4>,
-    pub render_resource: &'a RenderResource,
+    pub instance: &'a Instance,
     pub tree: &'a Tree,
     pub plugins: &'a Plugins,
     pub node_id: &'a NodeId,
     pub transform: &'a Transform,
     pub global_transform: &'a Transform,
-    pub render_pass: &'a mut EmptyRenderPass<'b, 'c, format::TargetFormat, format::Depth32Float>,
+    pub render_pass: &'a mut EmptyRenderPass<'b, 'c, 'd, format::TargetFormat, format::Depth32Float>,
 }
 
-pub struct ComponentPickCtx<'a, 'b, 'c> {
+pub struct ComponentPickCtx<'a, 'b, 'c, 'd> {
     pub viewport_camera: &'a Mat4,
-    pub render_resource: &'a RenderResource,
+    pub instance: &'a Instance,
     pub tree: &'a Tree,
     pub plugins: &'a Plugins,
     pub node_id: &'a NodeId,
     pub transform: &'a Transform,
     pub global_transform: &'a Transform,
-    pub render_pass: &'a mut RenderPass<'b, 'c, format::TargetFormat, format::Depth32Float>,
+    pub render_pass: &'a mut RenderPass<'b, 'c, 'd, format::TargetFormat, format::Depth32Float>,
 }
 
 pub trait InitComponent: Component {

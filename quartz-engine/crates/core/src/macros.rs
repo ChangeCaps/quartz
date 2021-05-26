@@ -5,15 +5,15 @@ macro_rules! register_types {
     } => {
         mod quartz_engine_editor_bridge {
             use super::*;
-            use quartz_engine::core::render::render::RenderResource;
+            use quartz_engine::core::render::render::Instance;
             use quartz_engine::core::types::Types;
             use quartz_engine::register_builtin_types;
             use quartz_engine::core::plugin::Plugins;
             use quartz_engine::core::component::Components;
 
             #[no_mangle]
-            pub fn new(render_resource: &RenderResource) -> (Components, Plugins) {
-                let mut types = Types::new(render_resource);
+            pub fn new(instance: &Instance) -> (Components, Plugins) {
+                let mut types = Types::new(instance);
 
                 register_builtin_types(&mut types);
 

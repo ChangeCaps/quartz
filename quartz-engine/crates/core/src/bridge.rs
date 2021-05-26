@@ -18,26 +18,24 @@ impl Bridge {
         Ok(Self { lib })
     }
 
-    pub fn new(&self, render_resource: &RenderResource) -> Result<GameState, Error> {
-        let new: Symbol<fn(&RenderResource) -> (Components, Plugins)> =
-            unsafe { self.lib.get(b"new") }?;
+    pub fn new(&self, instance: &Instance) -> Result<GameState, Error> {
+        let new: Symbol<fn(&Instance) -> (Components, Plugins)> = unsafe { self.lib.get(b"new") }?;
 
-        let (components, plugins) = new(render_resource);
+        let (components, plugins) = new(instance);
 
         let tree = Tree::new();
 
-        Ok(GameState::new(tree, plugins, components, render_resource))
+        Ok(GameState::new(tree, plugins, components, instance))
     }
 
     pub fn deserialize<'de, D: Deserializer<'de>>(
         &self,
         deserializer: D,
-        render_resource: &RenderResource,
+        instance: &Instance,
     ) -> Result<GameState, Error> {
-        let new: Symbol<fn(&RenderResource) -> (Components, Plugins)> =
-            unsafe { self.lib.get(b"new") }?;
+        let new: Symbol<fn(&Instance) -> (Components, Plugins)> = unsafe { self.lib.get(b"new") }?;
 
-        let (components, plugins) = new(render_resource);
+        let (components, plugins) = new(instance);
 
         let tree = crate::reflect::serde::TreeDeserializer {
             components: &components,
@@ -46,6 +44,6 @@ impl Bridge {
         .deserialize(deserializer)
         .unwrap();
 
-        Ok(GameState::new(tree, plugins, components, render_resource))
+        Ok(GameState::new(tree, plugins, components, instance))
     }
 }
