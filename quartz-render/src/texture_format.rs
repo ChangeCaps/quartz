@@ -24,6 +24,9 @@ macro_rules! format {
     };
 }
 
-format!(Rgba8UnormSrgb);
+format!(R32Uint);
+format!(R32Sint);
+format!(R32Float);
 format!(Rgba8Unorm);
+format!(Rgba8UnormSrgb);
 format!(Depth32Float);
