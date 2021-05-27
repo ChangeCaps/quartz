@@ -7,12 +7,12 @@ use std::sync::{
     Arc, Mutex, RwLock,
 };
 
-pub trait TextureDimension: Clone + 'static {
+pub trait TextureDimension<D: TextureData>: Clone + 'static {
     type Data;
 
     fn init_data(&self) -> Self::Data;
-    fn data_to_bytes(data: &Self::Data, format: &wgpu::TextureFormat) -> Vec<u8>;
-    fn bytes_to_data(&self, data: &mut Self::Data, bytes: &[u8], format: &wgpu::TextureFormat);
+    fn data_to_bytes<F: TextureFormat>(data: &Self::Data, format: F) -> Vec<u8>;
+    fn bytes_to_data<F: TextureFormat>(&self, data: &mut Self::Data, bytes: &[u8], format: F);
     fn get_dimension(&self) -> wgpu::TextureDimension;
     fn extent(&self) -> wgpu::Extent3d;
 }
@@ -52,28 +52,28 @@ impl D1 {
     }
 }
 
-impl TextureDimension for D1 {
-    type Data = Vec<Color>;
+impl<D: TextureData> TextureDimension<D> for D1 {
+    type Data = Vec<D>;
 
     fn init_data(&self) -> Self::Data {
-        vec![Color::ZERO; self.width as usize]
+        vec![D::default(); self.width as usize]
     }
 
-    fn data_to_bytes(data: &Self::Data, format: &wgpu::TextureFormat) -> Vec<u8> {
+    fn data_to_bytes<F: TextureFormat>(data: &Self::Data, format: F) -> Vec<u8> {
         data.iter()
-            .map(|color| color.into_bytes(format))
+            .map(|color| color.to_bytes(format.clone()))
             .flatten()
             .collect()
     }
 
-    fn bytes_to_data(&self, data: &mut Self::Data, bytes: &[u8], format: &wgpu::TextureFormat) {
-        let info = format.describe();
+    fn bytes_to_data<F: TextureFormat>(&self, data: &mut Self::Data, bytes: &[u8], format: F) {
+        let info = format.format().describe();
         let block_size = info.block_size as usize;
 
         data.iter_mut().enumerate().for_each(|(x, color)| {
             let index = x * block_size;
 
-            *color = Color::from_bytes(&bytes[index..index + block_size], format);
+            *color = D::from_bytes(&bytes[index..index + block_size], format.clone());
         });
     }
 
@@ -96,22 +96,26 @@ impl D2 {
     }
 }
 
-impl TextureDimension for D2 {
-    type Data = Vec<Vec<Color>>;
+impl<D: TextureData> TextureDimension<D> for D2 {
+    type Data = Vec<Vec<D>>;
 
     fn init_data(&self) -> Self::Data {
-        vec![vec![Color::ZERO; self.height as usize]; self.width as usize]
+        vec![vec![D::default(); self.height as usize]; self.width as usize]
     }
 
-    fn data_to_bytes(data: &Self::Data, format: &wgpu::TextureFormat) -> Vec<u8> {
+    fn data_to_bytes<F: TextureFormat>(data: &Self::Data, format: F) -> Vec<u8> {
         data.iter()
-            .map(|data| data.iter().map(|color| color.into_bytes(format)).flatten())
+            .map(|data| {
+                data.iter()
+                    .map(|color| color.to_bytes::<F>(format.clone()))
+                    .flatten()
+            })
             .flatten()
             .collect()
     }
 
-    fn bytes_to_data(&self, data: &mut Self::Data, bytes: &[u8], format: &wgpu::TextureFormat) {
-        let info = format.describe();
+    fn bytes_to_data<F: TextureFormat>(&self, data: &mut Self::Data, bytes: &[u8], format: F) {
+        let info = format.format().describe();
         let block_size = info.block_size as usize;
         let row_size = data_width(self.width) as usize * block_size;
 
@@ -119,7 +123,7 @@ impl TextureDimension for D2 {
             data.iter_mut().enumerate().for_each(|(y, color)| {
                 let index = y * row_size + x * block_size;
 
-                *color = Color::from_bytes(&bytes[index..index + block_size], format);
+                *color = D::from_bytes(&bytes[index..index + block_size], format.clone());
             });
         });
     }
@@ -147,29 +151,33 @@ impl D3 {
     }
 }
 
-impl TextureDimension for D3 {
-    type Data = Vec<Vec<Vec<Color>>>;
+impl<D: TextureData> TextureDimension<D> for D3 {
+    type Data = Vec<Vec<Vec<D>>>;
 
     fn init_data(&self) -> Self::Data {
         vec![
-            vec![vec![Color::ZERO; self.depth as usize]; self.height as usize];
+            vec![vec![D::default(); self.depth as usize]; self.height as usize];
             self.width as usize
         ]
     }
 
-    fn data_to_bytes(data: &Self::Data, format: &wgpu::TextureFormat) -> Vec<u8> {
+    fn data_to_bytes<F: TextureFormat>(data: &Self::Data, format: F) -> Vec<u8> {
         data.iter()
             .map(|data| {
                 data.iter()
-                    .map(|data| data.iter().map(|color| color.into_bytes(format)).flatten())
+                    .map(|data| {
+                        data.iter()
+                            .map(|color| color.to_bytes(format.clone()))
+                            .flatten()
+                    })
                     .flatten()
             })
             .flatten()
             .collect()
     }
 
-    fn bytes_to_data(&self, data: &mut Self::Data, bytes: &[u8], format: &wgpu::TextureFormat) {
-        let info = format.describe();
+    fn bytes_to_data<F: TextureFormat>(&self, data: &mut Self::Data, bytes: &[u8], format: F) {
+        let info = format.format().describe();
         let block_size = info.block_size as usize;
         let row_size = data_width(self.width) as usize * block_size;
         let image_size = row_size * self.height as usize;
@@ -179,7 +187,7 @@ impl TextureDimension for D3 {
                 data.iter_mut().enumerate().for_each(|(z, color)| {
                     let index = z * image_size + y * row_size + x * block_size;
 
-                    *color = Color::from_bytes(&bytes[index..index + block_size], format);
+                    *color = D::from_bytes(&bytes[index..index + block_size], format.clone());
                 });
             });
         });
@@ -208,29 +216,33 @@ impl D2Array {
     }
 }
 
-impl TextureDimension for D2Array {
-    type Data = Vec<Vec<Vec<Color>>>;
+impl<D: TextureData> TextureDimension<D> for D2Array {
+    type Data = Vec<Vec<Vec<D>>>;
 
     fn init_data(&self) -> Self::Data {
         vec![
-            vec![vec![Color::ZERO; self.layers as usize]; self.height as usize];
+            vec![vec![D::default(); self.layers as usize]; self.height as usize];
             self.width as usize
         ]
     }
 
-    fn data_to_bytes(data: &Self::Data, format: &wgpu::TextureFormat) -> Vec<u8> {
+    fn data_to_bytes<F: TextureFormat>(data: &Self::Data, format: F) -> Vec<u8> {
         data.iter()
             .map(|data| {
                 data.iter()
-                    .map(|data| data.iter().map(|color| color.into_bytes(format)).flatten())
+                    .map(|data| {
+                        data.iter()
+                            .map(|color| color.to_bytes(format.clone()))
+                            .flatten()
+                    })
                     .flatten()
             })
             .flatten()
             .collect()
     }
 
-    fn bytes_to_data(&self, data: &mut Self::Data, bytes: &[u8], format: &wgpu::TextureFormat) {
-        let info = format.describe();
+    fn bytes_to_data<F: TextureFormat>(&self, data: &mut Self::Data, bytes: &[u8], format: F) {
+        let info = format.format().describe();
         let block_size = info.block_size as usize;
         let row_size = data_width(self.width) as usize * block_size;
         let image_size = row_size * self.height as usize;
@@ -240,7 +252,7 @@ impl TextureDimension for D2Array {
                 data.iter_mut().enumerate().for_each(|(z, color)| {
                     let index = z * image_size + y * row_size + x * block_size;
 
-                    *color = Color::from_bytes(&bytes[index..index + block_size], format);
+                    *color = D::from_bytes(&bytes[index..index + block_size], format.clone());
                 });
             });
         });
@@ -259,12 +271,12 @@ impl TextureDimension for D2Array {
     }
 }
 
-pub struct TextureDescriptor<D: TextureDimension, F: TextureFormat> {
+pub struct TextureDescriptor<D: TextureDimension<F::Data>, F: TextureFormat> {
     pub dimension: D,
     pub format: F,
 }
 
-impl<D: TextureDimension, F: TextureFormat + Default> TextureDescriptor<D, F> {
+impl<D: TextureDimension<F::Data>, F: TextureFormat + Default> TextureDescriptor<D, F> {
     pub fn default_settings(dimension: D) -> Self {
         Self {
             dimension,
@@ -278,7 +290,7 @@ fn data_width(width: u32) -> u32 {
     ((width - 1) / wgpu::COPY_BYTES_PER_ROW_ALIGNMENT + 1) * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT
 }
 
-pub struct Texture<D: TextureDimension, F: TextureFormat = Rgba8UnormSrgb> {
+pub struct Texture<D: TextureDimension<F::Data>, F: TextureFormat = Rgba8UnormSrgb> {
     pub(crate) texture: wgpu::Texture,
     pub(crate) staging_buffer: Mutex<Option<wgpu::Buffer>>,
     pub(crate) view: Arc<wgpu::TextureView>,
@@ -288,7 +300,7 @@ pub struct Texture<D: TextureDimension, F: TextureFormat = Rgba8UnormSrgb> {
     pub dimensions: D,
 }
 
-impl<D: TextureDimension, F: TextureFormat> Texture<D, F> {
+impl<D: TextureDimension<F::Data>, F: TextureFormat> Texture<D, F> {
     pub fn new(texture_descriptor: &TextureDescriptor<D, F>, instance: &Instance) -> Self {
         let texture = instance.device.create_texture(&wgpu::TextureDescriptor {
             label: None,
@@ -417,7 +429,7 @@ impl<D: TextureDimension, F: TextureFormat> Texture<D, F> {
             }
 
             self.dimensions
-                .bytes_to_data(data.as_mut().unwrap(), &*mapped, &format);
+                .bytes_to_data(data.as_mut().unwrap(), &*mapped, self.format.clone());
         }
 
         staging_buffer.unmap();
@@ -443,7 +455,7 @@ impl<D: TextureDimension, F: TextureFormat> Texture<D, F> {
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
-            &D::data_to_bytes(data.as_ref().unwrap(), &self.format.format()),
+            &D::data_to_bytes(data.as_ref().unwrap(), self.format.clone()),
             self.image_data_layout(instance),
             extent,
         );
@@ -477,7 +489,7 @@ impl<F: TextureFormat> Texture<D2Array, F> {
         TextureView {
             view: ViewInner::Owned(Arc::new(view)),
             download: Some(self.download.clone()),
-            extent: self.dimensions.extent(),
+            extent: <D2Array as TextureDimension<F::Data>>::extent(&self.dimensions),
             format: self.format.clone(),
         }
     }

@@ -278,8 +278,7 @@ impl<'a, 'v, 'c, C: TextureFormat, D: TextureFormat> EmptyRenderPass<'a, 'v, 'c,
     pub fn with_pipeline<'rp>(
         &'rp mut self,
         pipeline: &'rp RenderPipeline<C, D>,
-    ) -> PipelineRenderPass<'a, 'rp, 'v, 'c, C, D> 
-    {
+    ) -> PipelineRenderPass<'a, 'rp, 'v, 'c, C, D> {
         let mut pass = PipelineRenderPass {
             pipeline,
             pass: self,
@@ -310,8 +309,7 @@ impl<'rp, C: TextureFormat, D: TextureFormat> PipelineRenderPass<'_, 'rp, '_, '_
     pub fn set_bindings(&mut self, mut bindings: Bindings) -> &mut Self {
         let bind_groups = bindings.generate_groups(self.pipeline, self.pass.ctx.instance);
 
-        self
-            .pass
+        self.pass
             .commands
             .push(Command::SetBindings { bind_groups });
 
