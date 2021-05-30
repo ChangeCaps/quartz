@@ -1,13 +1,18 @@
 use crate::project::*;
+use clap::{crate_authors, crate_version, Clap};
 use egui::Key;
 use egui::*;
+use quartz_engine::core::game_state;
 use quartz_engine::{
     core::editor_bridge::*,
     prelude::{Vec2, *},
-    render::framework::*,
 };
+use quartz_framework::{prelude::*, render::wgpu, winit};
+use std::any::TypeId;
 use std::collections::HashMap;
-use std::path::Path;
+use std::io::prelude::*;
+use std::path::{Path, PathBuf};
+use std::process::Stdio;
 use winit::event::{self, ElementState, MouseScrollDelta, VirtualKeyCode as VKey, WindowEvent};
 
 #[cfg(debug_assertions)]
@@ -15,20 +20,23 @@ pub const LIB_PATH: &'static str = "target/debug";
 #[cfg(not(debug_assertions))]
 pub const LIB_PATH: &'static str = "target/release";
 
+pub const TARGET_FORMAT: format::TargetFormat =
+    format::TargetFormat(wgpu::TextureFormat::Rgba8UnormSrgb);
+
 pub struct GameState {
-    pub state: quartz_engine::core::game_state::GameState,
-    pub bridge: Bridge,
+    pub state: Option<game_state::GameState>,
+    pub bridge: Option<Bridge>,
     pub running: bool,
 }
 
 impl GameState {
-    pub fn load(path: impl AsRef<Path>, render_resource: &RenderResource) -> Self {
+    pub fn load(path: impl AsRef<Path>, instance: &Instance) -> Self {
         let bridge = unsafe { Bridge::load(path.as_ref()) }.unwrap();
-        let state = bridge.new(render_resource).unwrap();
+        let state = bridge.new(instance, TARGET_FORMAT).unwrap();
 
         Self {
-            state,
-            bridge,
+            state: Some(state),
+            bridge: Some(bridge),
             running: false,
         }
     }
@@ -36,14 +44,16 @@ impl GameState {
     pub fn deserialize<'de, D: quartz_engine::core::serde::Deserializer<'de>>(
         deserializer: D,
         path: impl AsRef<Path>,
-        render_resource: &RenderResource,
+        instance: &Instance,
     ) -> Self {
         let bridge = unsafe { Bridge::load(path.as_ref()) }.unwrap();
-        let state = bridge.deserialize(deserializer, render_resource).unwrap();
+        let state = bridge
+            .deserialize(deserializer, instance, TARGET_FORMAT)
+            .unwrap();
 
         Self {
-            state,
-            bridge,
+            state: Some(state),
+            bridge: Some(bridge),
             running: false,
         }
     }
@@ -51,12 +61,23 @@ impl GameState {
     pub fn reload<'de, D: quartz_engine::core::serde::Deserializer<'de>>(
         &mut self,
         deserializer: D,
-        render_resource: &RenderResource,
+        instance: &Instance,
     ) {
-        self.state = self
-            .bridge
-            .deserialize(deserializer, render_resource)
-            .unwrap();
+        self.state = Some(
+            self.bridge
+                .as_ref()
+                .unwrap()
+                .deserialize(deserializer, instance, TARGET_FORMAT)
+                .unwrap(),
+        );
+    }
+}
+
+impl Drop for GameState {
+    fn drop(&mut self) {
+        drop(self.state.take());
+
+        self.bridge.take().unwrap().close().unwrap();
     }
 }
 
@@ -90,6 +111,20 @@ pub struct Viewport {
     pub ty: ViewportType,
 }
 
+pub enum Selection {
+    None,
+    Node(NodeId),
+    Plugin(TypeId),
+}
+
+#[derive(Clap)]
+#[clap(version = crate_version!(), author = crate_authors!())]
+pub struct Opts {
+    /// The path to your project.
+    #[clap(default_value = ".")]
+    pub project_path: PathBuf,
+}
+
 pub struct EditorState {
     pub egui_pipeline: RenderPipeline,
     pub egui_ctx: CtxRef,
@@ -99,16 +134,23 @@ pub struct EditorState {
     pub egui_sampler: Sampler,
     pub egui_point_pos: Option<Vec2>,
     pub egui_textures: HashMap<u64, Texture2d>,
+    pub pick_pipeline: RenderPipeline<format::R32Uint, format::Depth32Float>,
+    pub pick_texture: Texture2d<format::R32Uint>,
+    pub pick_depth_texture: Texture2d<format::Depth32Float>,
     pub game: Option<GameState>,
     pub project: Project,
     pub building: Option<std::process::Child>,
-    pub selected_node: Option<NodeId>,
+    pub selection: Selection,
     pub viewports: Vec<Viewport>,
 }
 
 impl EditorState {
-    pub fn new(render_resource: &RenderResource) -> Self {
-        log::debug!("Loading egui shader");
+    pub fn new(instance: &Instance, target_format: format::TargetFormat) -> Self {
+        let opts = Opts::parse();
+
+        log::info!("Starting editor at: {}", opts.project_path.display());
+
+        log::debug!("loading egui shader");
         let egui_shader = Shader::from_glsl(
             include_str!("shaders/egui.vert"),
             include_str!("shaders/egui.frag"),
@@ -117,32 +159,53 @@ impl EditorState {
         let egui_pipeline = RenderPipeline::new(
             PipelineDescriptor {
                 depth_stencil: None,
-                ..PipelineDescriptor::default_settings(egui_shader)
+                ..PipelineDescriptor::default_settings(egui_shader, target_format)
             },
-            render_resource,
+            instance,
         )
         .unwrap();
 
+        log::debug!("loading mouse picking shader");
+        let pick_shader = Shader::from_glsl(
+            include_str!("shaders/pick.vert"),
+            include_str!("shaders/pick.frag"),
+        )
+        .unwrap();
+        let pick_pipeline = RenderPipeline::new(
+            PipelineDescriptor::default_settings(pick_shader, Default::default()),
+            instance,
+        )
+        .unwrap();
+
+        let pick_texture = Texture2d::new(
+            &TextureDescriptor::default_settings(D2::new(1, 1)),
+            instance,
+        );
+        let pick_depth_texture = Texture2d::new(
+            &TextureDescriptor::default_settings(D2::new(1, 1)),
+            instance,
+        );
+
         let egui_texture = Texture2d::new(
             &TextureDescriptor::default_settings(D2::new(1, 1)),
-            render_resource,
+            instance,
         );
-        let egui_sampler = Sampler::new(&Default::default(), render_resource);
+        let egui_sampler = Sampler::new(&Default::default(), instance);
 
         let mut egui_textures = HashMap::new();
 
         egui_textures.insert(
             0,
             Texture2d::new(
-                &TextureDescriptor::default_settings(D2::new(500, 500)),
-                render_resource,
+                &TextureDescriptor::default_settings(D2::new(1, 1)),
+                instance,
             ),
         );
         egui_textures.insert(
             1,
             Texture2d::new(
-                &TextureDescriptor::default_settings(D2::new(500, 500)),
-                render_resource,
+                &TextureDescriptor::default_settings(D2::new(1, 1)),
+                instance,
             ),
         );
 
@@ -155,10 +218,13 @@ impl EditorState {
             egui_sampler,
             egui_point_pos: None,
             egui_textures,
+            pick_pipeline,
+            pick_texture,
+            pick_depth_texture,
             game: None,
-            project: Project::new("../testproject").unwrap(),
+            project: Project::new(opts.project_path).unwrap(),
             building: None,
-            selected_node: None,
+            selection: Selection::None,
             viewports: vec![
                 Viewport {
                     texture_id: 0,
@@ -175,8 +241,6 @@ impl EditorState {
     }
 
     pub fn build(&mut self) -> std::io::Result<()> {
-        log::info!("Building project");
-
         let mut command = std::process::Command::new("cargo");
         command.arg("build");
 
@@ -187,31 +251,37 @@ impl EditorState {
             .arg("--manifest-path")
             .arg(&self.project.path.join("Cargo.toml"));
 
+        command.stdout(Stdio::piped()).stderr(Stdio::piped());
+
         let child = command.spawn()?;
 
         self.building = Some(child);
 
+        log::info!("Building project!");
+
         Ok(())
     }
 
-    pub fn start_game(&mut self, render_resource: &mut RenderResource) {
+    pub fn start_game(&mut self, instance: &Instance) {
         self.save_scene();
 
         if let Some(game) = &mut self.game {
             game.running = true;
 
-            if let Some(render_texture) = self.egui_textures.get(&0) {
-                render_resource.target_texture(render_texture);
+            log::debug!("running game");
 
-                game.state.start(render_resource);
-
-                render_resource.target_swapchain();
+            if let Some(state) = &mut game.state {
+                state.start(TARGET_FORMAT, instance);
             }
         }
     }
 
     pub fn load_scene(&self) -> Option<Vec<u8>> {
-        if let Ok(scene) = std::fs::read(self.project.path.join("scene.scn")) {
+        let path = self.project.path.join("scene.scn");
+
+        log::debug!("loading scene from: {}", path.display());
+
+        if let Ok(scene) = std::fs::read(path) {
             Some(scene)
         } else {
             None
@@ -221,58 +291,57 @@ impl EditorState {
     pub fn save_scene(&self) {
         if let Some(game) = &self.game {
             if !game.running {
-                if let Ok(file) = std::fs::File::create(self.project.path.join("scene.scn")) {
-                    let mut serializer = //ron::Serializer::new(file, Some(ron::ser::PrettyConfig::default()), false).unwrap();
+                let path = self.project.path.join("scene.scn");
+
+                log::debug!("saving scene to: {}", path.display());
+
+                if let Ok(file) = std::fs::File::create(path) {
+                    let mut serializer =
                         serde_cbor::Serializer::new(serde_cbor::ser::IoWrite::new(file));
 
-                    game.state.serialize_tree(&mut serializer).unwrap();
+                    if let Some(state) = &game.state {
+                        state.serialize_tree(&mut serializer).unwrap();
+                    }
                 }
             }
         }
     }
 
-    pub fn reload_game(&mut self, scene: &[u8], render_resource: &mut RenderResource) {
+    pub fn reload_game(&mut self, scene: &[u8], instance: &Instance) {
         if let Some(game) = &mut self.game {
-            let mut deserializer = //ron::Deserializer::from_bytes(scene).unwrap();
-                serde_cbor::Deserializer::from_slice(scene);
+            let mut deserializer = serde_cbor::Deserializer::from_slice(scene);
 
-            render_resource
-                .target_texture(self.egui_textures.get(&0).expect("main texture not found"));
+            game.reload(&mut deserializer, instance);
 
-            game.reload(&mut deserializer, render_resource);
-
-            render_resource.target_swapchain();
+            if let Some(state) = &mut game.state {
+                state.editor_start(TARGET_FORMAT, instance);
+            }
         } else {
-            self.load(Some(scene), render_resource);
+            self.load(Some(scene), instance);
         }
     }
 
-    pub fn load(&mut self, scene: Option<&[u8]>, render_resource: &mut RenderResource) {
-        if let Some(render_texture) = self.egui_textures.get(&0) {
-            render_resource.target_texture(render_texture);
+    pub fn load(&mut self, scene: Option<&[u8]>, instance: &Instance) {
+        let mut game = if let Some(scene) = scene {
+            let mut deserializer = serde_cbor::Deserializer::from_slice(scene);
 
-            let mut state = if let Some(scene) = scene {
-                let mut deserializer = //ron::Deserializer::from_bytes(scene).unwrap();
-                    serde_cbor::Deserializer::from_slice(scene);
+            GameState::deserialize(
+                &mut deserializer,
+                &self.project.path.join(LIB_PATH).join("testproject.dll"),
+                instance,
+            )
+        } else {
+            GameState::load(
+                &self.project.path.join(LIB_PATH).join("testproject.dll"),
+                instance,
+            )
+        };
 
-                GameState::deserialize(
-                    &mut deserializer,
-                    &self.project.path.join(LIB_PATH).join("testproject.dll"),
-                    render_resource,
-                )
-            } else {
-                GameState::load(
-                    &self.project.path.join(LIB_PATH).join("testproject.dll"),
-                    render_resource,
-                )
-            };
-
-            state.state.editor_start(render_resource);
-
-            render_resource.target_swapchain();
-
-            self.game = Some(state);
+        if let Some(state) = &mut game.state {
+            state.editor_start(TARGET_FORMAT, instance);
         }
+
+        self.game = Some(game);
     }
 }
 
@@ -294,15 +363,11 @@ impl State for EditorState {
 
                     let scene = self.load_scene();
 
-                    self.load(scene.as_ref().map(|s| s.as_ref()), ctx.render_resource);
+                    self.load(scene.as_ref().map(|s| s.as_ref()), ctx.instance);
 
                     log::info!("Build loaded!");
                 } else {
                     log::error!("Build failed!");
-
-                    if let Some(stdout) = building.stdout.take() {
-                        log::error!("{:?}", stdout);
-                    }
                 }
 
                 self.building = None;
@@ -310,16 +375,12 @@ impl State for EditorState {
         }
 
         if let Some(game) = &mut self.game {
-            if let Some(render_texture) = self.egui_textures.get(&0) {
-                ctx.render_resource.target_texture(render_texture);
-
+            if let Some(state) = &mut game.state {
                 if game.running {
-                    game.state.update(ctx.render_resource);
+                    state.update(TARGET_FORMAT, ctx.instance);
                 } else {
-                    game.state.editor_update(ctx.render_resource);
+                    state.editor_update(TARGET_FORMAT, ctx.instance);
                 }
-
-                ctx.render_resource.target_swapchain();
             }
         }
 
@@ -328,11 +389,7 @@ impl State for EditorState {
         Trans::None
     }
 
-    fn handle_event(
-        &mut self,
-        _render_resource: &RenderResource,
-        event: &event::Event<()>,
-    ) -> Trans {
+    fn handle_event(&mut self, _instance: &Instance, event: &event::Event<()>) -> Trans {
         match event {
             event::Event::WindowEvent { event, .. } => match event {
                 WindowEvent::MouseWheel { delta, .. } => {
@@ -464,7 +521,13 @@ impl State for EditorState {
         Trans::None
     }
 
-    fn render(&mut self, render_resource: &mut RenderResource) {
+    fn render(&mut self, instance: &Instance, target: TextureView) {
+        if let Some(game) = &mut self.game {
+            if game.state.is_none() {
+                drop(self.game.take());
+            }
+        }
+
         let size = self
             .egui_raw_input
             .screen_rect
@@ -474,7 +537,7 @@ impl State for EditorState {
 
         self.egui_ctx.begin_frame(self.egui_raw_input.take());
 
-        self.ui(render_resource);
+        self.ui(instance);
 
         let (_output, shapes) = self.egui_ctx.end_frame();
         let clipped_meshes = self.egui_ctx.tessellate(shapes);
@@ -489,21 +552,16 @@ impl State for EditorState {
                     egui_texture.width as u32,
                     egui_texture.height as u32,
                 )),
-                render_resource,
+                instance,
             );
 
-            self.egui_texture.write(render_resource, |data| {
+            self.egui_texture.write(instance, |data| {
                 let mut pixels = egui_texture.srgba_pixels();
 
                 for x in 0..egui_texture.width {
                     for y in 0..egui_texture.height {
                         let color = Rgba::from(pixels.next().unwrap());
-                        data[x][y] = Color::rgba(
-                            color.r(), 
-                            color.g(), 
-                            color.b(), 
-                            color.a()
-                        );
+                        data[x][y] = Color::rgba(color.r(), color.g(), color.b(), color.a());
                     }
                 }
             });
@@ -513,84 +571,113 @@ impl State for EditorState {
                 .bind("tex_sampler", self.egui_sampler.clone());
         }
 
-        // FIXME: calling render twice is bad and inefficient
+        let mut render_ctx = instance.render();
 
         for viewport in &self.viewports {
             if let Some(texture) = self.egui_textures.get(&viewport.texture_id) {
-                render_resource.target_texture(texture);
+                if let Some(game) = &mut self.game {
+                    if let Some(state) = &mut game.state {
+                        let view = texture.view().map_format(|_| TARGET_FORMAT);
 
-                let game = &mut self.game;
+                        match &viewport.ty {
+                            ViewportType::Editor { camera } => {
+                                if self.pick_texture.dimensions.width != texture.dimensions.width
+                                    || self.pick_texture.dimensions.height
+                                        != texture.dimensions.height
+                                {
+                                    self.pick_texture = Texture2d::new(
+                                        &TextureDescriptor::default_settings(
+                                            texture.dimensions.clone(),
+                                        ),
+                                        instance,
+                                    );
 
-                render_resource
-                    .render(|ctx| {
-                        if let Some(state) = game {
-                            match &viewport.ty {
-                                ViewportType::Editor { camera } => {
-                                    state.state.viewport_render(
-                                        &Some(camera.view_proj()),
-                                        ctx,
-                                        render_resource,
+                                    self.pick_depth_texture = Texture2d::new(
+                                        &TextureDescriptor::default_settings(
+                                            texture.dimensions.clone(),
+                                        ),
+                                        instance,
                                     );
                                 }
-                                ViewportType::Game => {
-                                    state.state.render(ctx, render_resource);
-                                }
+
+                                state.viewport_pick_render(
+                                    &camera.view_proj(),
+                                    &self.pick_pipeline,
+                                    &self.pick_texture,
+                                    &self.pick_depth_texture,
+                                    &mut render_ctx,
+                                    instance,
+                                );
+
+                                state.viewport_render(
+                                    &Some(camera.view_proj()),
+                                    view,
+                                    &mut render_ctx,
+                                    instance,
+                                );
+                            }
+                            ViewportType::Game => {
+                                state.render(view, &mut render_ctx, instance);
                             }
                         }
-                    })
-                    .unwrap();
-
-                render_resource.target_swapchain();
+                    }
+                }
             }
         }
 
-        render_resource
-            .render(|ctx| {
-                let desc = Default::default();
+        let desc = RenderPassDescriptor::default_settings(target);
 
-                let mut pass = ctx.render_pass(&desc, &self.egui_pipeline);
+        let mut pass = render_ctx.render_pass(&desc, &self.egui_pipeline);
 
-                for ClippedMesh(rect, mesh) in &clipped_meshes {
-                    // TODO: use scissor rect
-                    let clip_rect = Vec4::new(rect.min.x, rect.min.y, rect.max.x, rect.max.y);
-                    self.egui_pipeline.bind_uniform("ClipRect", &clip_rect);
+        for ClippedMesh(rect, mesh) in &clipped_meshes {
+            // TODO: use scissor rect
+            let clip_rect = Vec4::new(rect.min.x, rect.min.y, rect.max.x, rect.max.y);
+            self.egui_pipeline.bind_uniform("ClipRect", &clip_rect);
 
-                    match &mesh.texture_id {
-                        TextureId::Egui => self.egui_pipeline.bind("tex", self.egui_texture.view()),
-                        TextureId::User(id) => {
-                            if let Some(texture) = self.egui_textures.get(id) {
-                                self.egui_pipeline.bind("tex", texture.view());
-                            }
-                        }
+            match &mesh.texture_id {
+                TextureId::Egui => self.egui_pipeline.bind("tex", self.egui_texture.view()),
+                TextureId::User(id) => {
+                    if let Some(texture) = self.egui_textures.get(id) {
+                        self.egui_pipeline.bind("tex", texture.view());
                     }
-
-                    let indices = mesh.indices.clone();
-                    let mut pos = Vec::with_capacity(mesh.vertices.len());
-                    let mut uv = Vec::with_capacity(mesh.vertices.len());
-                    let mut color = Vec::with_capacity(mesh.vertices.len());
-
-                    for vertex in &mesh.vertices {
-                        let v_color = Rgba::from(vertex.color);
-
-                        pos.push(Vec2::new(vertex.pos.x, vertex.pos.y));
-                        uv.push(Vec2::new(vertex.uv.x, vertex.uv.y));
-                        color.push(Color::rgba(
-                            v_color.r() * 4.0,
-                            v_color.g() * 4.0,
-                            v_color.b() * 4.0,
-                            v_color.a() * 4.0,
-                        ));
-                    }
-
-                    let mut mesh = Mesh::new();
-                    mesh.set_attribute("pos", pos);
-                    mesh.set_attribute("uv", uv);
-                    mesh.set_attribute("color", color);
-                    mesh.set_indices(indices);
-
-                    pass.draw_mesh(&mesh);
                 }
-            })
-            .unwrap();
+            }
+
+            let indices = mesh.indices.clone();
+            let mut pos = Vec::with_capacity(mesh.vertices.len());
+            let mut uv = Vec::with_capacity(mesh.vertices.len());
+            let mut color = Vec::with_capacity(mesh.vertices.len());
+
+            for vertex in &mesh.vertices {
+                let v_color = Rgba::from(vertex.color);
+
+                pos.push(Vec2::new(vertex.pos.x, vertex.pos.y));
+                uv.push(Vec2::new(vertex.uv.x, vertex.uv.y));
+
+                if let TextureId::Egui = mesh.texture_id {
+                    color.push(Color::rgba(
+                        v_color.r() * 4.0,
+                        v_color.g() * 4.0,
+                        v_color.b() * 4.0,
+                        v_color.a() * 4.0,
+                    ));
+                } else {
+                    color.push(Color::rgba(
+                        v_color.r(),
+                        v_color.g(),
+                        v_color.b(),
+                        v_color.a(),
+                    ));
+                }
+            }
+
+            let mut mesh = Mesh::new();
+            mesh.set_attribute("pos", pos);
+            mesh.set_attribute("uv", uv);
+            mesh.set_attribute("color", color);
+            mesh.set_indices(indices);
+
+            pass.draw_mesh(&mesh);
+        }
     }
 }

@@ -1,6 +1,7 @@
 use crate::component::*;
-use crate::transform::*;
 use crate::tree::*;
+use crate::reflect::*;
+use egui::Ui;
 use quartz_render::prelude::*;
 use std::any::{Any, TypeId};
 use std::cell::UnsafeCell;
@@ -108,11 +109,12 @@ impl Plugins {
                 tree: ctx.tree,
                 plugins: ctx.plugins,
                 instance: ctx.instance,
+                target_format: ctx.target_format,
             };
 
             self.get_mut_dyn(id, |plugin| {
                 plugin.start(ctx);
-            });
+            }).unwrap();
         }
     }
 
@@ -122,11 +124,12 @@ impl Plugins {
                 tree: ctx.tree,
                 plugins: ctx.plugins,
                 instance: ctx.instance,
+                target_format: ctx.target_format,
             };
 
             self.get_mut_dyn(id, |plugin| {
                 plugin.editor_start(ctx);
-            });
+            }).unwrap();
         }
     }
 
@@ -136,11 +139,12 @@ impl Plugins {
                 tree: ctx.tree,
                 plugins: ctx.plugins,
                 instance: ctx.instance,
+                target_format: ctx.target_format,
             };
 
             self.get_mut_dyn(id, |plugin| {
                 plugin.update(ctx);
-            });
+            }).unwrap();
         }
     }
 
@@ -150,11 +154,12 @@ impl Plugins {
                 tree: ctx.tree,
                 plugins: ctx.plugins,
                 instance: ctx.instance,
+                target_format: ctx.target_format,
             };
 
             self.get_mut_dyn(id, |plugin| {
                 plugin.editor_update(ctx);
-            });
+            }).unwrap();
         }
     }
 
@@ -165,11 +170,12 @@ impl Plugins {
                 plugins: ctx.plugins,
                 instance: ctx.instance,
                 render_ctx: ctx.render_ctx,
+                target: ctx.target,
             };
 
             self.get_mut_dyn(id, |plugin| {
                 plugin.render(ctx);
-            });
+            }).unwrap();
         }
     }
 
@@ -180,11 +186,12 @@ impl Plugins {
                 plugins: ctx.plugins,
                 instance: ctx.instance,
                 render_ctx: ctx.render_ctx,
+                target: ctx.target,
             };
 
             self.get_mut_dyn(id, |plugin| {
                 plugin.viewport_render(ctx);
-            });
+            }).unwrap();
         }
     }
 
@@ -210,13 +217,23 @@ impl Plugins {
         }
     }
 
-    pub fn get_mut_dyn(&self, id: &TypeId, f: impl FnOnce(&mut dyn Plugin)) {
-        if let Some(plugin) = self.plugins.get(id) {
-            if let Some(plugin) = plugin.take() {
-                f(plugin);
-            }
+    pub fn plugins(&self) -> Vec<TypeId> {
+        self.plugins.keys().cloned().collect()
+    }
 
-            unsafe { plugin.put() };
+    pub fn get_mut_dyn(&self, id: &TypeId, f: impl FnOnce(&mut dyn Plugin)) -> Result<(), ()> {
+        if let Some(plugin) = self.plugins.get(id) {
+            if let Some(p) = plugin.take() {
+                f(p);
+
+                unsafe { plugin.put() };
+
+                Ok(())
+            } else {
+                Err(())
+            }
+        } else {
+            Err(())
         }
     }
 
@@ -245,7 +262,7 @@ impl Plugins {
     }
 }
 
-pub trait PluginAny: Any + 'static {
+pub trait PluginAny: Any {
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
     fn type_id(&self) -> TypeId {
@@ -265,26 +282,31 @@ impl<T: Any> PluginAny for T {
 
 pub struct PluginInitCtx<'a> {
     pub instance: &'a Instance,
+    pub target_format: format::TargetFormat,
 }
 
 pub struct PluginCtx<'a> {
     pub tree: &'a mut Tree,
     pub plugins: &'a Plugins,
     pub instance: &'a Instance,
+    pub target_format: format::TargetFormat,
 }
 
-pub struct PluginRenderCtx<'a, 'b> {
+pub struct PluginRenderCtx<'a, 'b, 'c> {
     pub tree: &'a mut Tree,
     pub plugins: &'a Plugins,
     pub instance: &'a Instance,
     pub render_ctx: &'a mut RenderCtx<'b>,
+    pub target: &'a TextureView<'c>,
 }
 
 #[allow(unused_variables)]
-pub trait Plugin: PluginAny {
+pub trait Plugin: PluginAny + Reflect + ReflectName {
     fn init(ctx: PluginInitCtx) -> Self
     where
         Self: Sized;
+
+    fn inspector_ui(&mut self, ctx: PluginCtx, ui: &mut Ui) {}
 
     fn start(&mut self, ctx: PluginCtx) {}
 

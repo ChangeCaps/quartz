@@ -10,6 +10,7 @@ edition = "2018"
 
 [dependencies]
 quartz-engine = { path = "../quartz-engine" }
+noise = "0.7"
 
 [lib]
 crate-type = ["cdylib"]

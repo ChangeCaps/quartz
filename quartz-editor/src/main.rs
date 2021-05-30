@@ -2,16 +2,14 @@ mod editor_state;
 mod project;
 mod ui;
 
-use quartz_engine::render::framework::App;
+use quartz_framework::app::App;
 
 fn main() {
     simple_logger::SimpleLogger::new()
         .with_level(log::LevelFilter::Warn)
-        .with_module_level("quartz_editor", log::LevelFilter::Info)
+        .with_module_level("quartz_editor", log::LevelFilter::Debug)
         .init()
         .unwrap();
-
-    log::info!("Starting editor");
 
     App::new()
         .title("Quartz Editor")

@@ -15,3 +15,18 @@ pub trait Reflect: erased_serde::Serialize {
         std::any::type_name::<Self>()
     }
 }
+
+pub trait ReflectName {
+    fn short_name(&self) -> &str;
+    fn long_name(&self) -> &str;
+}
+
+impl<T: Reflect> ReflectName for T {
+    fn short_name(&self) -> &str {
+        Self::short_name_const()
+    }
+
+    fn long_name(&self) -> &str {
+        Self::short_name_const()
+    }
+}

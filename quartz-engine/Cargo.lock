@@ -688,6 +688,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "linked-hash-map"
+version = "0.5.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7fb9b38af92608140b86b693604b9ffcc5824240a484d1ecd4795bacb2fe88f3"
+dependencies = [
+ "serde",
+ "serde_test",
+]
+
+[[package]]
 name = "lock_api"
 version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -908,6 +918,7 @@ name = "quartz-engine-builtins"
 version = "0.1.0"
 dependencies = [
  "quartz-engine-core",
+ "serde",
 ]
 
 [[package]]
@@ -917,6 +928,8 @@ dependencies = [
  "egui",
  "erased-serde",
  "libloading",
+ "linked-hash-map",
+ "log",
  "quartz-engine-derive",
  "quartz-render",
  "serde",
@@ -935,7 +948,7 @@ dependencies = [
 [[package]]
 name = "quartz-render"
 version = "0.1.0"
-source = "git+https://github.com/ChangeCaps/quartz?branch=main#a37a7bb72e705fc2d55042262e1ad386a47f4695"
+source = "git+https://github.com/ChangeCaps/quartz?branch=main#465cbc5dd23cca7f689cdc2f75bda342d99778d3"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -953,7 +966,7 @@ dependencies = [
 [[package]]
 name = "quartz-render-derive"
 version = "0.1.0"
-source = "git+https://github.com/ChangeCaps/quartz?branch=main#a37a7bb72e705fc2d55042262e1ad386a47f4695"
+source = "git+https://github.com/ChangeCaps/quartz?branch=main#465cbc5dd23cca7f689cdc2f75bda342d99778d3"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -1079,6 +1092,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "serde_test"
+version = "1.0.126"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bd1055d1c20532080b9da5040ec8e27425f4d4573d8e29eb19ba4ff1e4b9da2d"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

@@ -1,22 +1,24 @@
 use crate::editor_state::*;
 use egui::*;
-use quartz_engine::render::prelude::*;
+use quartz_engine::core::node::NodeId;
+use quartz_engine::core::plugin::PluginCtx;
+use quartz_engine::render::prelude::{Vec2, *};
 
 impl EditorState {
-    pub fn ui(&mut self, render_resource: &mut RenderResource) {
+    pub fn ui(&mut self, instance: &Instance) {
         let input = self.egui_ctx.input();
 
         if input.key_pressed(Key::S) && input.modifiers.ctrl {
             self.save_scene();
         }
 
-        self.top_panel_ui(render_resource);
+        self.top_panel_ui(instance);
         self.left_panel_ui();
-        self.inspector_panel_ui(render_resource);
-        self.viewport_ui(render_resource);
+        self.inspector_panel_ui(instance);
+        self.viewport_ui(instance);
     }
 
-    pub fn top_panel_ui(&mut self, render_resource: &mut RenderResource) {
+    pub fn top_panel_ui(&mut self, instance: &Instance) {
         let game = &mut self.game;
         let building = &self.building;
         let mut reload = false;
@@ -51,7 +53,9 @@ impl EditorState {
         if build {
             self.save_scene();
 
-            drop(self.game.take());
+            if let Some(game) = &mut self.game {
+                drop(game.state.take());
+            }
 
             self.build().unwrap();
         }
@@ -59,18 +63,18 @@ impl EditorState {
         if reload {
             let scene = self.load_scene().unwrap();
 
-            self.reload_game(&scene, render_resource);
+            self.reload_game(&scene, instance);
         }
 
         if start {
-            self.start_game(render_resource);
+            self.start_game(instance);
         }
     }
 
     pub fn left_panel_ui(&mut self) {
         let files = &mut self.project.files;
         let game = &mut self.game;
-        let selected_node = &mut self.selected_node;
+        let selection = &mut self.selection;
 
         SidePanel::left("left_panel", 200.0).show(&self.egui_ctx, |ui| {
             ui.separator();
@@ -78,18 +82,51 @@ impl EditorState {
             let available_size = ui.available_size();
 
             if let Some(game) = game {
-                ScrollArea::from_max_height(available_size.y / 2.0)
-                    .id_source("nodes_scroll_area")
-                    .show(ui, |ui| {
-                        game.state.tree.nodes_ui(
-                            ui,
-                            &game.state.components,
-                            &game.state.plugins,
-                            selected_node,
-                        );
+                if let Some(state) = &mut game.state {
+                    ui.collapsing("Plugins", |ui| {
+                        ScrollArea::from_max_height(available_size.y / 3.0)
+                            .id_source("plugins_scroll_area")
+                            .show(ui, |ui| {
+                                for plugin_id in state.plugins.plugins() {
+                                    state
+                                        .plugins
+                                        .get_mut_dyn(&plugin_id, |plugin| {
+                                            if ui.button(plugin.short_name()).clicked() {
+                                                *selection = Selection::Plugin(plugin_id);
+                                            }
+                                        })
+                                        .unwrap();
+                                }
+                            });
                     });
 
-                ui.separator();
+                    ui.separator();
+
+                    let mut selected_node = if let Selection::Node(node_id) = selection {
+                        Some(*node_id)
+                    } else {
+                        None
+                    };
+
+                    ui.collapsing("Nodes", |ui| {
+                        ScrollArea::from_max_height(available_size.y / 3.0)
+                            .id_source("nodes_scroll_area")
+                            .show(ui, |ui| {
+                                state.tree.nodes_ui(
+                                    ui,
+                                    &state.components,
+                                    &state.plugins,
+                                    &mut selected_node,
+                                );
+                            });
+                    });
+
+                    if let Some(node_id) = selected_node {
+                        *selection = Selection::Node(node_id);
+                    }
+
+                    ui.separator();
+                }
             }
 
             ScrollArea::auto_sized()
@@ -100,36 +137,56 @@ impl EditorState {
         });
     }
 
-    pub fn inspector_panel_ui(&mut self, render_resource: &mut RenderResource) {
+    pub fn inspector_panel_ui(&mut self, instance: &Instance) {
+        let egui_ctx = &self.egui_ctx;
         if let Some(game) = &mut self.game {
-            if let Some(selected_node) = self.selected_node {
-                if let Some(mut node) = game.state.tree.get_node(&selected_node) {
-                    if let Some(render_texture) = self.egui_textures.get(&0) {
-                        SidePanel::left("inspector_panel", 300.0).show(&self.egui_ctx, |ui| {
-                            render_resource.target_texture(render_texture);
-
-                            node.inspector_ui(
-                                &game.state.plugins,
-                                &selected_node,
-                                &mut game.state.tree,
-                                render_resource,
-                                ui,
-                            );
-
-                            render_resource.target_swapchain();
-                        });
+            if let Some(state) = &mut game.state {
+                match &self.selection {
+                    Selection::Node(node_id) => {
+                        if let Some(mut node) = state.tree.get_node(node_id) {
+                            SidePanel::left("inspector_panel", 300.0).show(egui_ctx, |ui| {
+                                node.inspector_ui(
+                                    &state.plugins,
+                                    node_id,
+                                    &mut state.tree,
+                                    instance,
+                                    ui,
+                                );
+                            });
+                        } else {
+                            self.selection = Selection::None;
+                        }
                     }
-                } else {
-                    self.selected_node = None;
+                    Selection::Plugin(plugin_id) => {
+                        let tree = &mut state.tree;
+                        let plugins = &state.plugins;
+                        plugins
+                            .get_mut_dyn(plugin_id, |plugin| {
+                                let ctx = PluginCtx {
+                                    tree: tree,
+                                    plugins: plugins,
+                                    target_format: TARGET_FORMAT,
+                                    instance,
+                                };
+
+                                SidePanel::left("inspector_panel", 300.0).show(egui_ctx, |ui| {
+                                    plugin.inspector_ui(ctx, ui);
+                                });
+                            })
+                            .unwrap();
+                    }
+                    _ => {}
                 }
             }
         }
     }
 
-    pub fn viewport_ui(&mut self, render_resource: &mut RenderResource) {
+    pub fn viewport_ui(&mut self, instance: &Instance) {
         let textures = &mut self.egui_textures;
         let game = &mut self.game;
         let viewports = &mut self.viewports;
+        let selection = &mut self.selection;
+        let pick_texture = &self.pick_texture;
 
         CentralPanel::default().show(&self.egui_ctx, |ui| {
             if game.is_some() {
@@ -143,7 +200,7 @@ impl EditorState {
                                 TextureId::User(viewport.texture_id),
                                 view_port_size,
                             )
-                            .sense(Sense::drag()),
+                            .sense(Sense::click_and_drag()),
                         );
 
                         let view_port_width = view_port_size.x.floor() as u32;
@@ -159,11 +216,35 @@ impl EditorState {
                                     view_port_width,
                                     view_port_height,
                                 )),
-                                render_resource,
+                                instance,
                             );
                         }
 
                         if let ViewportType::Editor { camera } = &mut viewport.ty {
+                            if response.clicked_by(PointerButton::Primary) {
+                                if let Some(mut pos) = response.interact_pointer_pos() {
+                                    pos.x -= response.rect.min.x;
+                                    pos.y -= response.rect.min.y;
+
+                                    let x = pos.x.round() as usize;
+                                    let y = pos.y.round() as usize;
+
+                                    let id = pick_texture.read(instance, |data| {
+                                        let id = data[x][y];
+
+                                        if id < std::u32::MAX {
+                                            Some(NodeId(id as u64))
+                                        } else {
+                                            None
+                                        }
+                                    });
+
+                                    if let Some(node_id) = id {
+                                        *selection = Selection::Node(node_id);
+                                    }
+                                }
+                            }
+
                             camera.projection.aspect = aspect;
 
                             if response.dragged_by(PointerButton::Middle) {
@@ -173,11 +254,11 @@ impl EditorState {
 
                                 if ui.input().modifiers.shift {
                                     camera.transform.translation -=
-                                        local_x * ui.input().pointer.delta().x * 0.01;
+                                        local_x * response.drag_delta().x * 0.01;
                                     camera.transform.translation +=
-                                        local_y * ui.input().pointer.delta().y * 0.01;
+                                        local_y * response.drag_delta().y * 0.01;
                                 } else {
-                                    let delta = ui.input().pointer.delta();
+                                    let delta = response.drag_delta();
                                     camera.euler.x -= delta.x * 0.002;
                                     camera.euler.y -= delta.y * 0.002;
 

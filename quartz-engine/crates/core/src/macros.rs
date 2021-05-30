@@ -5,21 +5,18 @@ macro_rules! register_types {
     } => {
         mod quartz_engine_editor_bridge {
             use super::*;
-            use quartz_engine::core::render::render::Instance;
+            use quartz_engine::core::render::{instance::Instance, texture_format::TargetFormat};
             use quartz_engine::core::types::Types;
             use quartz_engine::register_builtin_types;
             use quartz_engine::core::plugin::Plugins;
             use quartz_engine::core::component::Components;
+            use quartz_engine::core::bridge::InitFunction;
 
             #[no_mangle]
-            pub fn new(instance: &Instance) -> (Components, Plugins) {
-                let mut types = Types::new(instance);
+            pub unsafe extern "C" fn new(types: *mut Types) {
+                register_builtin_types(&mut *types);
 
-                register_builtin_types(&mut types);
-
-                $register_types(&mut types);
-
-                (types.components, types.plugins)
+                $register_types(&mut *types);
             }
         }
     };

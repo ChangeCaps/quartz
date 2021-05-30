@@ -27,7 +27,8 @@ pub struct ComponentRenderCtx<'a, 'b, 'c, 'd> {
     pub node_id: &'a NodeId,
     pub transform: &'a Transform,
     pub global_transform: &'a Transform,
-    pub render_pass: &'a mut EmptyRenderPass<'b, 'c, 'd, format::TargetFormat, format::Depth32Float>,
+    pub render_pass:
+        &'a mut EmptyRenderPass<'b, 'c, 'd, format::TargetFormat, format::Depth32Float>,
 }
 
 pub struct ComponentPickCtx<'a, 'b, 'c, 'd> {
@@ -38,7 +39,7 @@ pub struct ComponentPickCtx<'a, 'b, 'c, 'd> {
     pub node_id: &'a NodeId,
     pub transform: &'a Transform,
     pub global_transform: &'a Transform,
-    pub render_pass: &'a mut RenderPass<'b, 'c, 'd, format::TargetFormat, format::Depth32Float>,
+    pub render_pass: &'a mut RenderPass<'b, 'c, 'd, format::R32Uint, format::Depth32Float>,
 }
 
 pub trait InitComponent: Component {
@@ -65,6 +66,10 @@ pub trait Component: 'static {
         ui: &mut Ui,
     ) {
     }
+
+    fn start(&mut self, plugins: <Self::Plugins as PluginFetch<'_>>::Item, ctx: ComponentCtx) {}
+
+    fn editor_start(&mut self, plugins: <Self::Plugins as PluginFetch<'_>>::Item, ctx: ComponentCtx) {}
 
     fn update(&mut self, plugins: <Self::Plugins as PluginFetch<'_>>::Item, ctx: ComponentCtx) {}
 
@@ -120,6 +125,8 @@ pub trait ComponentPod: Reflect + Any {
     fn short_name(&self) -> &str;
     fn long_name(&self) -> &str;
     fn inspector_ui(&mut self, plugins: &Plugins, ctx: ComponentCtx, ui: &mut Ui);
+    fn start(&mut self, plugins: &Plugins, ctx: ComponentCtx);
+    fn editor_start(&mut self, plugins: &Plugins, ctx: ComponentCtx);
     fn update(&mut self, plugins: &Plugins, ctx: ComponentCtx);
     fn editor_update(&mut self, plugins: &Plugins, ctx: ComponentCtx);
     fn render(&mut self, plugins: &Plugins, ctx: ComponentRenderCtx);
@@ -143,6 +150,18 @@ impl<T: Component + Reflect> ComponentPod for T {
     fn inspector_ui(&mut self, plugins: &Plugins, ctx: ComponentCtx, ui: &mut Ui) {
         T::Plugins::fetch(plugins, |plugins| {
             Component::inspector_ui(self, plugins, ctx, ui);
+        });
+    }
+
+    fn start(&mut self, plugins: &Plugins, ctx: ComponentCtx) {
+        T::Plugins::fetch(plugins, |plugins| {
+            Component::start(self, plugins, ctx);
+        });
+    }
+
+    fn editor_start(&mut self, plugins: &Plugins, ctx: ComponentCtx) {
+        T::Plugins::fetch(plugins, |plugins| {
+            Component::editor_start(self, plugins, ctx);
         });
     }
 

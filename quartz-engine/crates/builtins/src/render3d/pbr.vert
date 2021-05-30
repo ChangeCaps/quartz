@@ -17,6 +17,6 @@ layout(set = 0, binding = 1) uniform Camera {
 
 void main() {
     v_world_position = (model * vec4(vertex_position, 1.0)).xyz;
-    v_world_normal = (model * vec4(vertex_normal, 0.0)).xyz;
+    v_world_normal = normalize((model * vec4(vertex_normal, 0.0)).xyz);
     gl_Position = view_proj * model * vec4(vertex_position, 1.0);
 }

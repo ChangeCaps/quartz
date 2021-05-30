@@ -3,12 +3,12 @@ use crate::node::*;
 use crate::plugin::*;
 use crate::transform::*;
 use crate::tree::*;
+use linked_hash_map::LinkedHashMap;
 use serde::{
     de::{self, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor},
     ser::{SerializeStruct, Serializer},
     Deserialize, Serialize,
 };
-use std::collections::HashMap;
 
 impl Serialize for Node {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -201,7 +201,7 @@ pub(crate) struct NodesDeserializer<'a> {
 }
 
 impl<'a, 'de> DeserializeSeed<'de> for NodesDeserializer<'a> {
-    type Value = HashMap<NodeId, NodeContainer>;
+    type Value = LinkedHashMap<NodeId, NodeContainer>;
 
     fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
         struct NodesVisitor<'a> {
@@ -210,7 +210,7 @@ impl<'a, 'de> DeserializeSeed<'de> for NodesDeserializer<'a> {
         }
 
         impl<'a, 'de> Visitor<'de> for NodesVisitor<'a> {
-            type Value = HashMap<NodeId, NodeContainer>;
+            type Value = LinkedHashMap<NodeId, NodeContainer>;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
                 formatter.write_str("NodeId: Node")?;
@@ -219,7 +219,7 @@ impl<'a, 'de> DeserializeSeed<'de> for NodesDeserializer<'a> {
             }
 
             fn visit_map<V: MapAccess<'de>>(self, mut map: V) -> Result<Self::Value, V::Error> {
-                let mut nodes = HashMap::with_capacity(map.size_hint().unwrap_or(0));
+                let mut nodes = LinkedHashMap::with_capacity(map.size_hint().unwrap_or(0));
 
                 while let Some(key) = map.next_key()? {
                     let value = map.next_value_seed(NodeContainerDeserializer {
@@ -474,7 +474,7 @@ impl<'a, 'de> DeserializeSeed<'de> for ComponentDeserializer<'a> {
     where
         D: Deserializer<'de>,
     {
-        println!("loading component: {}", self.name);
+        log::debug!("loading component: {}", self.name);
         let mut component = self
             .components
             .init_long_name(self.name, self.plugins)

@@ -33,6 +33,7 @@ pub mod prelude {
     pub use crate::plugin::{Plugin, PluginCtx, PluginInitCtx, PluginRenderCtx, Plugins};
     pub use crate::reflect::Reflect;
     pub use crate::render::prelude::*;
+    pub use crate::transform::*;
     pub use crate::tree::Tree;
     pub use crate::types::*;
 }

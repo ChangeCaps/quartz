@@ -2,12 +2,13 @@ use crate::component::*;
 use crate::node::*;
 use crate::plugin::*;
 use crate::transform::*;
+use linked_hash_map::LinkedHashMap;
 use quartz_render::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
 pub struct Tree {
-    pub(crate) nodes: HashMap<NodeId, NodeContainer>,
+    pub(crate) nodes: LinkedHashMap<NodeId, NodeContainer>,
     pub(crate) parents: HashMap<NodeId, NodeId>,
     pub(crate) children: HashMap<NodeId, Vec<NodeId>>,
     pub(crate) base: HashSet<NodeId>,
@@ -18,7 +19,7 @@ pub struct Tree {
 impl Tree {
     pub fn new() -> Self {
         Self {
-            nodes: HashMap::new(),
+            nodes: LinkedHashMap::new(),
             parents: HashMap::new(),
             children: HashMap::new(),
             base: HashSet::new(),
@@ -152,6 +153,22 @@ impl Tree {
         }
     }
 
+    pub fn start(&mut self, plugins: &Plugins, instance: &Instance) {
+        for node_id in self.nodes() {
+            if let Some(mut node) = self.get_node(&node_id) {
+                node.start(plugins, &node_id, self, instance);
+            }
+        }
+    }
+
+    pub fn editor_start(&mut self, plugins: &Plugins, instance: &Instance) {
+        for node_id in self.nodes() {
+            if let Some(mut node) = self.get_node(&node_id) {
+                node.editor_start(plugins, &node_id, self, instance);
+            }
+        }
+    }
+
     pub fn update(&mut self, plugins: &Plugins, instance: &Instance) {
         for node_id in self.nodes() {
             if let Some(mut node) = self.get_node(&node_id) {
@@ -219,17 +236,15 @@ impl Tree {
         &mut self,
         plugins: &Plugins,
         viewport_camera: &Mat4,
-        render_pipeline: &RenderPipeline,
+        render_pipeline: &RenderPipeline<format::R32Uint>,
         instance: &Instance,
-        render_pass: &mut RenderPass<'_, '_, '_, format::TargetFormat, format::Depth32Float>,
+        render_pass: &mut RenderPass<'_, '_, '_, format::R32Uint, format::Depth32Float>,
     ) {
         for node_id in self.nodes() {
             if let Some(mut node) = self.get_node(&node_id) {
-                let id: f32 = unsafe { std::mem::transmute(node_id.0 as u32) };
-
-                render_pipeline.bind_uniform("NodeId", &id);
+                render_pipeline.bind_uniform("NodeId", &(node_id.0 as u32));
                 render_pipeline.bind_uniform("Camera", viewport_camera);
-                render_pipeline.bind_uniform("Transform", &node.transform.matrix());
+                render_pipeline.bind_uniform("Transform", &node.global_transform.matrix());
 
                 node.viewport_pick_render(
                     plugins,

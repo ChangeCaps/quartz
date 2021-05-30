@@ -11,6 +11,8 @@ egui = "0.12"
 libloading = { version = "0.7", optional = true }
 serde = { version = "1.0.126", features = ["derive"] }
 erased-serde = "0.3.13"
+log = "0.4"
+linked-hash-map = { version = "0.5", features = ["serde_impl"] }
 
 [features]
 default = ["editor_bridge"]

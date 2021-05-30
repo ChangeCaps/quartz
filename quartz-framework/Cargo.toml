@@ -1,0 +1,14 @@
+[package]
+name = "quartz-framework"
+version = "0.1.0"
+authors = ["= <hjalte.nannestad@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+quartz-render = { git = "https://github.com/ChangeCaps/quartz", branch = "main" }
+winit = "0.25"
+futures = "0.3"
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }

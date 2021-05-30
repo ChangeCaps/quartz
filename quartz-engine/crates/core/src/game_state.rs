@@ -2,22 +2,25 @@ use crate::component::*;
 use crate::plugin::*;
 use crate::render::prelude::*;
 use crate::tree::*;
+use crate::render::wgpu;
 use serde::Serialize;
 
 pub struct GameState {
     pub tree: Tree,
-    pub plugins: Plugins,
-    pub components: Components,
+    pub plugins: Box<Plugins>,
+    pub components: Box<Components>,
     pub depth_texture: Texture2d<format::Depth32Float>,
 }
 
 impl GameState {
-    pub fn new(tree: Tree, plugins: Plugins, components: Components, instance: &Instance) -> Self {
+    pub fn new(
+        tree: Tree,
+        plugins: Box<Plugins>,
+        components: Box<Components>,
+        instance: &Instance,
+    ) -> Self {
         let depth_texture = Texture::new(
-            &TextureDescriptor::default_settings(D2::new(
-                1,
-                1,
-            )),
+            &TextureDescriptor::default_settings(D2::new(1, 1)),
             instance,
         );
 
@@ -29,33 +32,38 @@ impl GameState {
         }
     }
 
-    pub fn start(&mut self, instance: &Instance) {
+    pub fn start(&mut self, target_format: format::TargetFormat, instance: &Instance) {
         let plugin_ctx = PluginCtx {
             tree: &mut self.tree,
             plugins: &self.plugins,
             instance,
+            target_format,
         };
 
         self.plugins.start(plugin_ctx);
+        self.tree.start(&self.plugins, instance);
     }
 
-    pub fn editor_start(&mut self, instance: &Instance) {
+    pub fn editor_start(&mut self, target_format: format::TargetFormat, instance: &Instance) {
         let plugin_ctx = PluginCtx {
             tree: &mut self.tree,
             plugins: &self.plugins,
             instance,
+            target_format,
         };
 
         self.plugins.editor_start(plugin_ctx);
+        self.tree.editor_start(&self.plugins, instance);
     }
 
-    pub fn update(&mut self, instance: &Instance) {
+    pub fn update(&mut self, target_format: format::TargetFormat, instance: &Instance) {
         self.tree.update_transforms();
 
         let plugin_ctx = PluginCtx {
             tree: &mut self.tree,
             plugins: &self.plugins,
             instance,
+            target_format,
         };
 
         self.plugins.update(plugin_ctx);
@@ -74,13 +82,14 @@ impl GameState {
         }
     }
 
-    pub fn editor_update(&mut self, instance: &Instance) {
+    pub fn editor_update(&mut self, target_format: format::TargetFormat, instance: &Instance) {
         self.tree.update_transforms();
 
         let plugin_ctx = PluginCtx {
             tree: &mut self.tree,
             plugins: &self.plugins,
             instance,
+            target_format,
         };
 
         self.plugins.editor_update(plugin_ctx);
@@ -104,10 +113,7 @@ impl GameState {
             || self.depth_texture.dimensions.height != height
         {
             self.depth_texture = Texture::new(
-                &TextureDescriptor::default_settings(D2::new(
-                    width,
-                    height,
-                )),
+                &TextureDescriptor::default_settings(D2::new(width, height)),
                 instance,
             );
         }
@@ -126,6 +132,7 @@ impl GameState {
             plugins: &self.plugins,
             instance: instance,
             render_ctx,
+            target: &target,
         };
 
         self.plugins.render(plugin_ctx);
@@ -154,6 +161,7 @@ impl GameState {
             plugins: &self.plugins,
             instance: instance,
             render_ctx,
+            target: &target,
         };
 
         self.plugins.viewport_render(plugin_ctx);
@@ -171,15 +179,30 @@ impl GameState {
     pub fn viewport_pick_render(
         &mut self,
         camera: &Mat4,
-        pipeline: &RenderPipeline,
-        texture: &Texture2d<format::Depth32Float>,
+        pipeline: &RenderPipeline<format::R32Uint>,
+        texture: &Texture2d<format::R32Uint>,
+        depth_texture: &Texture2d<format::Depth32Float>,
         render_ctx: &mut RenderCtx,
         instance: &Instance,
     ) {
         let desc = RenderPassDescriptor {
             label: Some("Viewport pick pass".to_string()),
-            color_attachments: vec![],
-            depth_attachment: Some(DepthAttachment::default_settings(texture.view())),
+            color_attachments: vec![
+                ColorAttachment {
+                    texture: texture.view(),
+                    resolve_target: None,
+                    ops: Operations {
+                        load: LoadOp::Clear(wgpu::Color {
+                            r: std::u32::MAX as f64,
+                            g: 0.0,
+                            b: 0.0,
+                            a: 0.0,
+                        }),
+                        store: true,
+                    }
+                },
+            ],
+            depth_attachment: Some(DepthAttachment::default_settings(depth_texture.view())),
         };
 
         let mut render_pass = render_ctx.render_pass(&desc, pipeline);

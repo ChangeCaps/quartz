@@ -7,14 +7,14 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+quartz-framework = { path = "../quartz-framework" }
 quartz-engine = { path = "../quartz-engine", features = ["editor_bridge"], default-features = false }
 egui = "0.12"
-winit = "0.25"
-serde = "1.0.126"
+serde = "1.0"
 serde_cbor = "0.11"
 ron = "0.6.4"
 clap = "3.0.0-beta.2"
-log = "0.4.14"
+log = "0.4"
 simple_logger = "1.11.0"
 
 [dev-dependencies]

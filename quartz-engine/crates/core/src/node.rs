@@ -92,6 +92,44 @@ impl Node {
         });
     }
 
+    pub fn start(
+        &mut self,
+        plugins: &Plugins,
+        node_id: &NodeId,
+        tree: &mut Tree,
+        instance: &Instance,
+    ) {
+        let ctx = ComponentCtx {
+            tree,
+            node_id,
+            plugins,
+            transform: &mut self.transform,
+            global_transform: &self.global_transform,
+            instance,
+        };
+
+        self.component.start(plugins, ctx);
+    }
+
+    pub fn editor_start(
+        &mut self,
+        plugins: &Plugins,
+        node_id: &NodeId,
+        tree: &mut Tree,
+        instance: &Instance,
+    ) {
+        let ctx = ComponentCtx {
+            tree,
+            node_id,
+            plugins,
+            transform: &mut self.transform,
+            global_transform: &self.global_transform,
+            instance,
+        };
+
+        self.component.editor_start(plugins, ctx);
+    }
+
     pub fn update(
         &mut self,
         plugins: &Plugins,
@@ -183,7 +221,7 @@ impl Node {
         tree: &mut Tree,
         viewport_camera: &Mat4,
         instance: &Instance,
-        render_pass: &mut RenderPass<'_, '_, '_, format::TargetFormat, format::Depth32Float>,
+        render_pass: &mut RenderPass<'_, '_, '_, format::R32Uint, format::Depth32Float>,
     ) {
         let ctx = ComponentPickCtx {
             viewport_camera,

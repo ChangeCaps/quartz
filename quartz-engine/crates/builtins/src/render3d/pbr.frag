@@ -8,6 +8,11 @@ layout(location = 0) out vec4 out_color;
 const int MAX_LIGHTS = 64;
 const int MAX_DIR_LIGHTS = 8;
 
+struct AmbientLightRaw {
+    vec4 color;
+    float intensity;
+};
+
 struct PointLight {
     vec4 color;
     vec4 data;
@@ -31,13 +36,21 @@ layout(set = 0, binding = 3) uniform DirectionalLights {
     DirectionalLight directional_lights[MAX_DIR_LIGHTS];
 };
 
+layout(set = 0, binding = 4) uniform AmbientLight {
+    AmbientLightRaw ambient;
+};
+
 layout(set = 1, binding = 0) uniform texture2DArray DirectionalShadowMaps;
 layout(set = 1, binding = 1) uniform sampler ShadowSampler;
 
 void main() {
     vec3 color = vec3(1.0);
 
-    vec3 light = vec3(0.0);
+    vec3 ambient = ambient.color.rgb * ambient.intensity;
+
+    float sky_diffuse = max(dot(normalize(v_world_normal), vec3(0.0, 1.0, 0.0)), 0.0);
+
+    vec3 light = ambient * sky_diffuse;
     
     for (int i = 0; i < num_point_lights; i++) {
         PointLight point_light = point_lights[i];
@@ -59,7 +72,7 @@ void main() {
         uv.y *= -1.0;
         uv += 0.5;
 
-        const int BLUR = 5;
+        const int BLUR = 1;
         float shadow = 0.0;
         vec2 texel_size = 1.0 / vec2(textureSize(sampler2DArray(DirectionalShadowMaps, ShadowSampler), 0));
 
@@ -71,13 +84,13 @@ void main() {
                     float depth = texture(
                         sampler2DArray(DirectionalShadowMaps, ShadowSampler), 
                         vec3(uv + offset, i)
-                    ).r * 1000.0;
+                    ).r;
 
-                    float dist = distance(dlight.pos, v_world_position);
+                    float dist = distance(dlight.pos, v_world_position) / 1000.0;
 
                     if (any(lessThanEqual(uv + offset, vec2(0.0))) || any(greaterThanEqual(uv + offset, vec2(1.0)))) {
                         shadow += 1.0;
-                    } else if (dist < depth + 0.1) {
+                    } else if (dist < depth + 0.001) {
                         shadow += 1.0;
                     }
                 }
