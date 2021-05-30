@@ -1,6 +1,6 @@
 use crate::component::*;
-use crate::tree::*;
 use crate::reflect::*;
+use crate::tree::*;
 use egui::Ui;
 use quartz_render::prelude::*;
 use std::any::{Any, TypeId};
@@ -114,7 +114,8 @@ impl Plugins {
 
             self.get_mut_dyn(id, |plugin| {
                 plugin.start(ctx);
-            }).unwrap();
+            })
+            .unwrap();
         }
     }
 
@@ -129,7 +130,8 @@ impl Plugins {
 
             self.get_mut_dyn(id, |plugin| {
                 plugin.editor_start(ctx);
-            }).unwrap();
+            })
+            .unwrap();
         }
     }
 
@@ -144,7 +146,8 @@ impl Plugins {
 
             self.get_mut_dyn(id, |plugin| {
                 plugin.update(ctx);
-            }).unwrap();
+            })
+            .unwrap();
         }
     }
 
@@ -159,7 +162,8 @@ impl Plugins {
 
             self.get_mut_dyn(id, |plugin| {
                 plugin.editor_update(ctx);
-            }).unwrap();
+            })
+            .unwrap();
         }
     }
 
@@ -175,7 +179,8 @@ impl Plugins {
 
             self.get_mut_dyn(id, |plugin| {
                 plugin.render(ctx);
-            }).unwrap();
+            })
+            .unwrap();
         }
     }
 
@@ -191,7 +196,8 @@ impl Plugins {
 
             self.get_mut_dyn(id, |plugin| {
                 plugin.viewport_render(ctx);
-            }).unwrap();
+            })
+            .unwrap();
         }
     }
 

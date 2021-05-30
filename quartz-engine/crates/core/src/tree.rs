@@ -42,9 +42,9 @@ impl Tree {
         self.nodes.keys().cloned().collect()
     }
 
-    pub fn spawn(&mut self, component: impl ToPod) -> NodeId {
+    pub fn spawn(&mut self) -> NodeId {
         let id = self.generate_id();
-        let node = Node::new(component.to_pod());
+        let node = Node::new();
         self.nodes.insert(id, NodeContainer::new(node));
         self.base.insert(id);
         self.children.insert(id, Vec::new());
@@ -52,15 +52,11 @@ impl Tree {
         id
     }
 
-    pub fn spawn_child(
-        &mut self,
-        component: impl ToPod,
-        parent_id: impl Into<NodeId>,
-    ) -> Option<NodeId> {
+    pub fn spawn_child(&mut self, parent_id: impl Into<NodeId>) -> Option<NodeId> {
         let parent_id = parent_id.into();
 
         if self.nodes.contains_key(&parent_id) {
-            let child_id = self.spawn(component);
+            let child_id = self.spawn();
             self.set_parent(child_id, parent_id);
 
             Some(child_id)

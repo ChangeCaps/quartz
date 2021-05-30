@@ -1,7 +1,7 @@
 use quartz_engine_core::egui::Ui;
 use quartz_engine_core::prelude::*;
-use serde::{Serialize, Deserialize};
 use quartz_engine_core::render::wgpu;
+use serde::{Deserialize, Serialize};
 
 mod quartz_engine {
     pub use quartz_engine_core as core;
@@ -125,7 +125,9 @@ impl Plugin for Render3dPlugin {
         for node_id in ctx.tree.nodes() {
             let node = ctx.tree.get_node(node_id).unwrap();
 
-            if let Some(light) = node.get_component::<DirectionalLight3d>() {
+            let light = node.get_component::<DirectionalLight3d>();
+
+            if let Some(light) = light {
                 if light.shadows {
                     let light_view_proj =
                         light.projection() * node.global_transform().matrix().inverse();
@@ -168,7 +170,8 @@ impl Plugin for Render3dPlugin {
     }
 
     fn render(&mut self, ctx: PluginRenderCtx) {
-        self.pbr_pipeline.bind_uniform("AmbientLight", &self.ambient_light);
+        self.pbr_pipeline
+            .bind_uniform("AmbientLight", &self.ambient_light);
 
         if let Some(main_camera) = self.main_camera {
             if let Some(node) = ctx.tree.get_node(main_camera) {
@@ -265,7 +268,9 @@ impl DirectionalLight3d {
             bottom: -60.0,
             ..Default::default()
         };
-        let rot = Quat::from_rotation_arc(Vec3::Z, self.direction.normalize());
+        let mut dir = self.direction.normalize();
+        dir.y *= -1.0;
+        let rot = Quat::from_rotation_arc(-Vec3::Z, dir);
 
         proj.matrix() * Mat4::from_quat(rot)
     }

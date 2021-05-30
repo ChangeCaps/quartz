@@ -1,8 +1,8 @@
 use crate::component::*;
 use crate::plugin::*;
 use crate::render::prelude::*;
-use crate::tree::*;
 use crate::render::wgpu;
+use crate::tree::*;
 use serde::Serialize;
 
 pub struct GameState {
@@ -187,21 +187,19 @@ impl GameState {
     ) {
         let desc = RenderPassDescriptor {
             label: Some("Viewport pick pass".to_string()),
-            color_attachments: vec![
-                ColorAttachment {
-                    texture: texture.view(),
-                    resolve_target: None,
-                    ops: Operations {
-                        load: LoadOp::Clear(wgpu::Color {
-                            r: std::u32::MAX as f64,
-                            g: 0.0,
-                            b: 0.0,
-                            a: 0.0,
-                        }),
-                        store: true,
-                    }
+            color_attachments: vec![ColorAttachment {
+                texture: texture.view(),
+                resolve_target: None,
+                ops: Operations {
+                    load: LoadOp::Clear(wgpu::Color {
+                        r: std::u32::MAX as f64,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 0.0,
+                    }),
+                    store: true,
                 },
-            ],
+            }],
             depth_attachment: Some(DepthAttachment::default_settings(depth_texture.view())),
         };
 

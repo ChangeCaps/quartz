@@ -12,6 +12,7 @@ pub struct ComponentCtx<'a> {
     //pub global_transform: &'a Transform,
     pub tree: &'a mut Tree,
     pub plugins: &'a Plugins,
+    pub components: &'a NodeComponents,
     pub node_id: &'a NodeId,
     pub transform: &'a mut Transform,
     pub global_transform: &'a Transform,
@@ -24,6 +25,7 @@ pub struct ComponentRenderCtx<'a, 'b, 'c, 'd> {
     pub instance: &'a Instance,
     pub tree: &'a Tree,
     pub plugins: &'a Plugins,
+    pub components: &'a NodeComponents,
     pub node_id: &'a NodeId,
     pub transform: &'a Transform,
     pub global_transform: &'a Transform,
@@ -36,6 +38,7 @@ pub struct ComponentPickCtx<'a, 'b, 'c, 'd> {
     pub instance: &'a Instance,
     pub tree: &'a Tree,
     pub plugins: &'a Plugins,
+    pub components: &'a NodeComponents,
     pub node_id: &'a NodeId,
     pub transform: &'a Transform,
     pub global_transform: &'a Transform,
@@ -69,7 +72,12 @@ pub trait Component: 'static {
 
     fn start(&mut self, plugins: <Self::Plugins as PluginFetch<'_>>::Item, ctx: ComponentCtx) {}
 
-    fn editor_start(&mut self, plugins: <Self::Plugins as PluginFetch<'_>>::Item, ctx: ComponentCtx) {}
+    fn editor_start(
+        &mut self,
+        plugins: <Self::Plugins as PluginFetch<'_>>::Item,
+        ctx: ComponentCtx,
+    ) {
+    }
 
     fn update(&mut self, plugins: <Self::Plugins as PluginFetch<'_>>::Item, ctx: ComponentCtx) {}
 

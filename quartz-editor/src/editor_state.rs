@@ -296,8 +296,8 @@ impl EditorState {
                 log::debug!("saving scene to: {}", path.display());
 
                 if let Ok(file) = std::fs::File::create(path) {
-                    let mut serializer =
-                        serde_cbor::Serializer::new(serde_cbor::ser::IoWrite::new(file));
+                    let mut serializer = ron::Serializer::new(file, Some(ron::ser::PrettyConfig::default()), true).unwrap();
+                        //serde_cbor::Serializer::new(serde_cbor::ser::IoWrite::new(file));
 
                     if let Some(state) = &game.state {
                         state.serialize_tree(&mut serializer).unwrap();
@@ -309,7 +309,8 @@ impl EditorState {
 
     pub fn reload_game(&mut self, scene: &[u8], instance: &Instance) {
         if let Some(game) = &mut self.game {
-            let mut deserializer = serde_cbor::Deserializer::from_slice(scene);
+            let mut deserializer = ron::Deserializer::from_bytes(scene).unwrap();
+                //serde_cbor::Deserializer::from_slice(scene);
 
             game.reload(&mut deserializer, instance);
 
@@ -323,7 +324,8 @@ impl EditorState {
 
     pub fn load(&mut self, scene: Option<&[u8]>, instance: &Instance) {
         let mut game = if let Some(scene) = scene {
-            let mut deserializer = serde_cbor::Deserializer::from_slice(scene);
+            let mut deserializer = ron::Deserializer::from_bytes(scene).unwrap();
+                //serde_cbor::Deserializer::from_slice(scene);
 
             GameState::deserialize(
                 &mut deserializer,

@@ -169,6 +169,9 @@ impl Inspect for Transform {
             mutated |= self.translation.inspect(ui);
 
             let (mut yaw, mut pitch, mut roll) = self.rotation.to_euler(EulerRot::XYZ);
+            yaw *= 180.0 / std::f32::consts::PI;
+            pitch *= 180.0 / std::f32::consts::PI;
+            roll *= 180.0 / std::f32::consts::PI;
 
             ui.horizontal(|ui| {
                 ui.columns(3, |columns| {
@@ -180,6 +183,10 @@ impl Inspect for Transform {
                     mutated |= inspect!(drag(0.02) ui => &mut roll);
                 });
             });
+
+            yaw /= 180.0 / std::f32::consts::PI;
+            pitch /= 180.0 / std::f32::consts::PI;
+            roll /= 180.0 / std::f32::consts::PI;
 
             self.rotation = Quat::from_euler(EulerRot::XYZ, yaw, pitch, roll);
 

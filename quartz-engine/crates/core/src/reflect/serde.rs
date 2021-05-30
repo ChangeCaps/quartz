@@ -9,6 +9,7 @@ use serde::{
     ser::{SerializeStruct, Serializer},
     Deserialize, Serialize,
 };
+use std::sync::RwLock;
 
 impl Serialize for Node {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -16,9 +17,15 @@ impl Serialize for Node {
 
         state.serialize_field("name", &self.name)?;
         state.serialize_field("transform", &self.transform)?;
-        state.serialize_field("component", self.component.as_ref())?;
+        state.serialize_field("component", &self.components)?;
 
         state.end()
+    }
+}
+
+impl Serialize for NodeComponents {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.components.serialize(serializer)
     }
 }
 
@@ -48,12 +55,7 @@ impl Serialize for Tree {
 
 impl Serialize for dyn ComponentPod {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut state = serializer.serialize_struct("Component", 2)?;
-
-        state.serialize_field("type", self.long_name())?;
-        state.serialize_field("component", self.as_serialize())?;
-
-        state.end()
+        self.as_serialize().serialize(serializer)
     }
 }
 
@@ -300,19 +302,21 @@ impl<'a, 'de> DeserializeSeed<'de> for NodeDeserializer<'a> {
                         .next_element()?
                         .ok_or(de::Error::invalid_length(1, &self))?,
                     global_transform: Transform::IDENTITY,
-                    component: seq
-                        .next_element_seed(ComponentPodDeserializer {
-                            plugins: self.plugins,
-                            components: self.components,
-                        })?
-                        .ok_or(de::Error::invalid_length(2, &self))?,
+                    components: NodeComponents {
+                        components: seq
+                            .next_element_seed(ComponentsDeserializer {
+                                plugins: self.plugins,
+                                components: self.components,
+                            })?
+                            .ok_or(de::Error::invalid_length(2, &self))?,
+                    },
                 })
             }
 
             fn visit_map<V: MapAccess<'de>>(self, mut map: V) -> Result<Self::Value, V::Error> {
                 let mut name = None;
                 let mut transform = None;
-                let mut component = None;
+                let mut components = None;
 
                 while let Some(key) = map.next_key()? {
                     match key {
@@ -331,11 +335,11 @@ impl<'a, 'de> DeserializeSeed<'de> for NodeDeserializer<'a> {
                             transform = Some(map.next_value()?);
                         }
                         Field::Component => {
-                            if component.is_some() {
+                            if components.is_some() {
                                 return Err(de::Error::duplicate_field("component"));
                             }
 
-                            component = Some(map.next_value_seed(ComponentPodDeserializer {
+                            components = Some(map.next_value_seed(ComponentsDeserializer {
                                 components: self.components,
                                 plugins: self.plugins,
                             })?);
@@ -345,13 +349,13 @@ impl<'a, 'de> DeserializeSeed<'de> for NodeDeserializer<'a> {
 
                 let name = name.ok_or_else(|| de::Error::missing_field("name"))?;
                 let transform = transform.ok_or_else(|| de::Error::missing_field("transform"))?;
-                let component = component.ok_or_else(|| de::Error::missing_field("component"))?;
+                let components = components.ok_or_else(|| de::Error::missing_field("component"))?;
 
                 Ok(Node {
                     name,
                     transform,
                     global_transform: Transform::IDENTITY,
-                    component,
+                    components: NodeComponents { components },
                 })
             }
         }
@@ -368,13 +372,13 @@ impl<'a, 'de> DeserializeSeed<'de> for NodeDeserializer<'a> {
     }
 }
 
-pub struct ComponentPodDeserializer<'a> {
+pub struct ComponentsDeserializer<'a> {
     plugins: &'a Plugins,
     components: &'a Components,
 }
 
-impl<'a, 'de> DeserializeSeed<'de> for ComponentPodDeserializer<'a> {
-    type Value = Box<dyn ComponentPod>;
+impl<'a, 'de> DeserializeSeed<'de> for ComponentsDeserializer<'a> {
+    type Value = LinkedHashMap<String, RwLock<Box<dyn ComponentPod>>>;
 
     fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
     where
@@ -387,77 +391,41 @@ impl<'a, 'de> DeserializeSeed<'de> for ComponentPodDeserializer<'a> {
             Component,
         }
 
-        struct ComponentVisitor<'a> {
+        struct ComponentsVisitor<'a> {
             plugins: &'a Plugins,
             components: &'a Components,
         }
 
-        impl<'a, 'de> Visitor<'de> for ComponentVisitor<'a> {
-            type Value = Box<dyn ComponentPod>;
+        impl<'a, 'de> Visitor<'de> for ComponentsVisitor<'a> {
+            type Value = LinkedHashMap<String, RwLock<Box<dyn ComponentPod>>>;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("struct Component")?;
+                formatter.write_str("map of components")?;
 
                 Ok(())
             }
 
-            fn visit_seq<V: SeqAccess<'de>>(self, mut seq: V) -> Result<Self::Value, V::Error> {
-                let ty: String = seq
-                    .next_element()?
-                    .ok_or(de::Error::invalid_length(0, &self))?;
-                let component = seq
-                    .next_element_seed(ComponentDeserializer {
-                        name: &ty,
-                        plugins: self.plugins,
-                        components: self.components,
-                    })?
-                    .ok_or(de::Error::invalid_length(1, &self))?;
-
-                Ok(component)
-            }
-
             fn visit_map<V: MapAccess<'de>>(self, mut map: V) -> Result<Self::Value, V::Error> {
-                let mut ty = None;
-                let mut component = None;
+                let mut components = LinkedHashMap::new();
 
                 while let Some(key) = map.next_key()? {
-                    match key {
-                        Field::Type => {
-                            if ty.is_some() {
-                                return Err(de::Error::duplicate_field("type"));
-                            }
+                    let component = map.next_value_seed(ComponentDeserializer {
+                        name: key,
+                        plugins: self.plugins,
+                        components: self.components,
+                    })?;
 
-                            ty = Some(map.next_value()?);
-                        }
-                        Field::Component => {
-                            if let Some(ty) = ty {
-                                component = Some(map.next_value_seed(ComponentDeserializer {
-                                    name: ty,
-                                    plugins: self.plugins,
-                                    components: self.components,
-                                })?);
-                            } else {
-                                return Err(de::Error::missing_field("type"));
-                            }
-                        }
-                    }
+                    components.insert(key.to_string(), RwLock::new(component));
                 }
 
-                let component = component.ok_or_else(|| de::Error::missing_field("component"))?;
-
-                Ok(component)
+                Ok(components)
             }
         }
 
-        const FIELDS: &[&str] = &["type", "component"];
-        deserializer.deserialize_struct(
-            "Component",
-            FIELDS,
-            ComponentVisitor {
-                plugins: self.plugins,
-                components: self.components,
-            },
-        )
+        deserializer.deserialize_map(ComponentsVisitor {
+            plugins: self.plugins,
+            components: self.components,
+        })
     }
 }
 

@@ -147,6 +147,7 @@ impl EditorState {
                             SidePanel::left("inspector_panel", 300.0).show(egui_ctx, |ui| {
                                 node.inspector_ui(
                                     &state.plugins,
+                                    &state.components,
                                     node_id,
                                     &mut state.tree,
                                     instance,

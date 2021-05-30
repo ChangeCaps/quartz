@@ -35,72 +35,70 @@ impl Default for Terrain {
 
 impl Terrain {
     pub fn generate(&self, ctx: ComponentCtx) {
-        for child in ctx.tree.get_children(ctx.node_id) {
-            let mut child = ctx.tree.get_node(child).unwrap();
+        let mesh = ctx.components.get_component_mut::<ProceduralMesh3d>();
 
-            if let Some(mesh) = child.get_component_mut::<ProceduralMesh3d>() {
-                println!("generating");
+        if let Some(mut mesh) = mesh {
+            println!("generating");
 
-                let mut positions = Vec::new();
-                let mut indices = Vec::new();
+            let mut positions = Vec::new();
+            let mut indices = Vec::new();
 
-                for x in 0..self.size {
-                    for z in 0..self.size {
-                        let mut pos = Vec3::new(x as f32, 0.0, z as f32);
-                        pos -= Vec3::splat(self.size as f32 / 2.0);
-                        pos *= self.scale;
+            for x in 0..self.size {
+                for z in 0..self.size {
+                    let mut pos = Vec3::new(x as f32, 0.0, z as f32);
+                    pos -= Vec3::splat(self.size as f32 / 2.0);
+                    pos *= self.scale;
 
-                        let h = |mut p: Vec3| {
-                            p *= 0.1;
-                            detailed_noise(p, 4)
-                        };
+                    let h = |mut p: Vec3| {
+                        p *= 0.1;
+                        detailed_noise(p, 4)
+                    };
 
-                        let y = h(pos);
-                        pos.y = y * self.height;
+                    let y = h(pos);
+                    pos.y = y * self.height;
 
-                        positions.push(pos);
-                    }
+                    positions.push(pos);
                 }
-
-                for x in 0..self.size - 1 {
-                    for z in 0..self.size - 1 {
-                        let index = z * self.size + x;
-
-                        indices.push(index);
-                        indices.push(index + 1);
-                        indices.push(index + self.size);
-                        indices.push(index + self.size + 1);
-                        indices.push(index + self.size);
-                        indices.push(index + 1);
-                    }
-                }
-
-                let mut normals = vec![Vec3::ZERO; positions.len()];
-
-                for i in 0..indices.len() / 3 {
-                    let i0 = indices[i * 3 + 0] as usize;
-                    let i1 = indices[i * 3 + 1] as usize;
-                    let i2 = indices[i * 3 + 2] as usize;
-                
-                    let p0 = positions[i0];
-                    let p1 = positions[i1];
-                    let p2 = positions[i2];
-                
-                    let normal = (p1 - p0).cross(p2 - p0).normalize();
-
-                    normals[i0] += normal;
-                    normals[i1] += normal;
-                    normals[i2] += normal;
-                }
-
-                for normal in &mut normals {
-                    *normal = normal.normalize();
-                }
-
-                mesh.mesh.set_attribute("vertex_position", positions);
-                mesh.mesh.set_attribute("vertex_normal", normals);
-                mesh.mesh.set_indices(indices);
             }
+
+            for x in 0..self.size - 1 {
+                for z in 0..self.size - 1 {
+                    let index = z * self.size + x;
+
+                    indices.push(index);
+                    indices.push(index + 1);
+                    indices.push(index + self.size);
+                    indices.push(index + self.size + 1);
+                    indices.push(index + self.size);
+                    indices.push(index + 1);
+                }
+            }
+
+            let mut normals = vec![Vec3::ZERO; positions.len()];
+
+            for i in 0..indices.len() / 3 {
+                let i0 = indices[i * 3 + 0] as usize;
+                let i1 = indices[i * 3 + 1] as usize;
+                let i2 = indices[i * 3 + 2] as usize;
+
+                let p0 = positions[i0];
+                let p1 = positions[i1];
+                let p2 = positions[i2];
+
+                let normal = (p1 - p0).cross(p2 - p0).normalize();
+
+                normals[i0] += normal;
+                normals[i1] += normal;
+                normals[i2] += normal;
+            }
+
+            for normal in &mut normals {
+                *normal = normal.normalize();
+            }
+
+            mesh.mesh.set_attribute("vertex_position", positions);
+            mesh.mesh.set_attribute("vertex_normal", normals);
+            mesh.mesh.set_indices(indices);
         }
     }
 }

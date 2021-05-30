@@ -5,30 +5,6 @@ use crate::tree::*;
 use egui::*;
 
 impl Tree {
-    fn add_node_popup(
-        &mut self,
-        components: &Components,
-        plugins: &Plugins,
-        selected_node: &mut Option<NodeId>,
-        ui: &mut Ui,
-    ) {
-        ui.set_max_width(200.0);
-
-        ScrollArea::from_max_height(300.0).show(ui, |ui| {
-            for component in components.components() {
-                if ui.button(component).clicked() {
-                    let component = components.init_short_name(component, plugins).unwrap();
-
-                    if let Some(node) = selected_node {
-                        self.spawn_child(component, *node);
-                    } else {
-                        self.spawn(component);
-                    }
-                }
-            }
-        });
-    }
-
     pub fn nodes_ui(
         &mut self,
         ui: &mut Ui,
@@ -36,8 +12,6 @@ impl Tree {
         plugins: &Plugins,
         selected_node: &mut Option<NodeId>,
     ) {
-        let popup_id = ui.make_persistent_id("add_node_popup");
-
         ui.separator();
 
         for id in self.base.clone() {
@@ -48,13 +22,7 @@ impl Tree {
 
         if add_node_response.clicked() {
             *selected_node = None;
-            ui.memory().toggle_popup(popup_id);
-        }
-
-        if selected_node.is_none() {
-            popup::popup_below_widget(ui, popup_id, &add_node_response, |ui| {
-                self.add_node_popup(components, plugins, selected_node, ui);
-            });
+            self.spawn();
         }
 
         if add_node_response.hovered() && ui.input().pointer.any_released() {
@@ -83,11 +51,7 @@ impl Tree {
         selected_node: &mut Option<NodeId>,
     ) {
         if let Some(node) = self.get_node(node_id) {
-            let selected = *selected_node == Some(*node_id);
-
             let children = self.get_children(*node_id).clone();
-
-            let popup_id = ui.make_persistent_id("add_node_popup");
 
             let (response, add_response) = ui
                 .horizontal(|ui| {
@@ -102,7 +66,7 @@ impl Tree {
                     if add_response.clicked() {
                         *selected_node = Some(*node_id);
 
-                        ui.memory().toggle_popup(popup_id);
+                        self.spawn_child(node_id);
                     }
 
                     if ui.button("-").clicked() {
@@ -157,16 +121,6 @@ impl Tree {
                     });
                 });
             };
-
-            if ui.input().key_pressed(Key::A) && ui.input().modifiers.ctrl && selected {
-                ui.memory().toggle_popup(popup_id);
-            }
-
-            if selected {
-                popup::popup_below_widget(ui, popup_id, &add_response, |ui| {
-                    self.add_node_popup(components, plugins, selected_node, ui);
-                });
-            }
         }
     }
 }

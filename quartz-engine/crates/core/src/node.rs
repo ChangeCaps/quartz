@@ -4,8 +4,13 @@ use crate::plugin::*;
 use crate::transform::*;
 use crate::tree::*;
 use egui::*;
+use linked_hash_map::LinkedHashMap;
 use quartz_render::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::{
+    any::TypeId,
+    sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
+};
 
 #[derive(Clone, Debug, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct NodeId(pub u64);
@@ -22,20 +27,66 @@ impl Into<Option<NodeId>> for &NodeId {
     }
 }
 
+pub struct NodeComponents {
+    pub(crate) components: LinkedHashMap<String, RwLock<Box<dyn ComponentPod>>>,
+}
+
+impl NodeComponents {
+    pub fn new() -> Self {
+        Self {
+            components: LinkedHashMap::new(),
+        }
+    }
+
+    pub fn add_component(&mut self, to_pod: impl ToPod) {
+        let component = to_pod.to_pod();
+        self.components
+            .insert(component.long_name().to_string(), RwLock::new(component));
+    }
+
+    pub fn get_component<T: ComponentPod>(&self) -> Option<RwLockReadGuard<Box<T>>> {
+        let component = self.components.get(T::long_name_const())?.read().unwrap();
+
+        if component.as_ref().get_type_id() == TypeId::of::<T>() {
+            Some(unsafe { std::mem::transmute(component) })
+        } else {
+            None
+        }
+    }
+
+    pub fn get_component_mut<T: ComponentPod>(&self) -> Option<RwLockWriteGuard<Box<T>>> {
+        let component = self.components.get(T::long_name_const())?.write().unwrap();
+
+        if component.as_ref().get_type_id() == TypeId::of::<T>() {
+            Some(unsafe { std::mem::transmute(component) })
+        } else {
+            None
+        }
+    }
+
+    pub fn components(&self) -> impl Iterator<Item = RwLockReadGuard<Box<dyn ComponentPod>>> {
+        self.components.values().map(|c| c.read().unwrap())
+    }
+
+    pub fn components_mut(&self) -> impl Iterator<Item = RwLockWriteGuard<Box<dyn ComponentPod>>> {
+        self.components.values().map(|c| c.write().unwrap())
+    }
+}
+
 pub struct Node {
     pub name: String,
     pub transform: Transform,
     pub(crate) global_transform: Transform,
-    pub(crate) component: Box<dyn ComponentPod>,
+    pub(crate) components: NodeComponents,
 }
 
 impl Node {
-    pub fn new(component: Box<dyn ComponentPod>) -> Self {
+    pub fn new() -> Self {
         Self {
-            name: String::from(component.short_name()),
+            name: String::from("Node"),
             transform: Transform::IDENTITY,
             global_transform: Transform::IDENTITY,
-            component: component,
+            components: NodeComponents::new(),
         }
     }
 
@@ -43,20 +94,16 @@ impl Node {
         &self.global_transform
     }
 
-    pub fn get_component<T: ComponentPod>(&self) -> Option<&T> {
-        self.component.as_ref().as_any().downcast_ref::<T>()
+    pub fn add_component(&mut self, component: impl ToPod) {
+        self.components.add_component(component);
     }
 
-    pub fn get_component_mut<T: ComponentPod>(&mut self) -> Option<&mut T> {
-        self.component.as_mut().as_any_mut().downcast_mut::<T>()
+    pub fn get_component<T: ComponentPod>(&self) -> Option<RwLockReadGuard<Box<T>>> {
+        self.components.get_component::<T>()
     }
 
-    pub fn components(&self) -> &dyn ComponentPod {
-        self.component.as_ref()
-    }
-
-    pub fn components_mut(&mut self) -> &mut dyn ComponentPod {
-        self.component.as_mut()
+    pub fn get_component_mut<T: ComponentPod>(&self) -> Option<RwLockWriteGuard<Box<T>>> {
+        self.components.get_component_mut::<T>()
     }
 }
 
@@ -65,6 +112,7 @@ impl Node {
     pub fn inspector_ui(
         &mut self,
         plugins: &Plugins,
+        components: &Components,
         node_id: &NodeId,
         tree: &mut Tree,
         instance: &Instance,
@@ -77,18 +125,58 @@ impl Node {
         ScrollArea::auto_sized().show(ui, |ui| {
             self.transform.inspect(ui);
 
+            let mut remove = Vec::new();
+
+            for component in self.components.components.values() {
+                ui.separator();
+
+                ui.horizontal(|ui| {
+                    let component = component.read().unwrap();
+
+                    ui.label(component.short_name());
+                    
+                    if ui.button("-").clicked() {
+                        remove.push(component.long_name().to_string());
+                    }
+                });
+
+                let ctx = ComponentCtx {
+                    tree,
+                    node_id,
+                    plugins,
+                    components: &self.components,
+                    transform: &mut self.transform,
+                    global_transform: &self.global_transform,
+                    instance,
+                };
+
+                component.write().unwrap().inspector_ui(plugins, ctx, ui);
+            }
+
+            for remove in remove {
+                self.components.components.remove(&remove);
+            }
+
             ui.separator();
 
-            let ctx = ComponentCtx {
-                tree,
-                node_id,
-                plugins,
-                transform: &mut self.transform,
-                global_transform: &self.global_transform,
-                instance,
-            };
+            let add_component_response = ui.button("+");
+            let add_component_id = ui.make_persistent_id(node_id);
 
-            self.component.inspector_ui(plugins, ctx, ui);
+            if add_component_response.clicked() {
+                ui.memory().toggle_popup(add_component_id);
+            }
+
+            popup::popup_below_widget(ui, add_component_id, &add_component_response, |ui| {
+                ui.set_max_width(300.0);
+
+                for component in components.components() {
+                    if ui.button(component).clicked() {
+                        let component = components.init_short_name(component, plugins).unwrap();
+
+                        self.add_component(component);
+                    }
+                }
+            });
         });
     }
 
@@ -99,16 +187,19 @@ impl Node {
         tree: &mut Tree,
         instance: &Instance,
     ) {
-        let ctx = ComponentCtx {
-            tree,
-            node_id,
-            plugins,
-            transform: &mut self.transform,
-            global_transform: &self.global_transform,
-            instance,
-        };
+        for mut component in self.components.components_mut() {
+            let ctx = ComponentCtx {
+                tree,
+                node_id,
+                plugins,
+                components: &self.components,
+                transform: &mut self.transform,
+                global_transform: &self.global_transform,
+                instance,
+            };
 
-        self.component.start(plugins, ctx);
+            component.start(plugins, ctx);
+        }
     }
 
     pub fn editor_start(
@@ -118,16 +209,19 @@ impl Node {
         tree: &mut Tree,
         instance: &Instance,
     ) {
-        let ctx = ComponentCtx {
-            tree,
-            node_id,
-            plugins,
-            transform: &mut self.transform,
-            global_transform: &self.global_transform,
-            instance,
-        };
+        for mut component in self.components.components_mut() {
+            let ctx = ComponentCtx {
+                tree,
+                node_id,
+                plugins,
+                components: &self.components,
+                transform: &mut self.transform,
+                global_transform: &self.global_transform,
+                instance,
+            };
 
-        self.component.editor_start(plugins, ctx);
+            component.editor_start(plugins, ctx);
+        }
     }
 
     pub fn update(
@@ -137,16 +231,19 @@ impl Node {
         tree: &mut Tree,
         instance: &Instance,
     ) {
-        let ctx = ComponentCtx {
-            tree,
-            node_id,
-            plugins,
-            transform: &mut self.transform,
-            global_transform: &self.global_transform,
-            instance,
-        };
+        for component in self.components.components.values() {
+            let ctx = ComponentCtx {
+                tree,
+                node_id,
+                plugins,
+                components: &self.components,
+                transform: &mut self.transform,
+                global_transform: &self.global_transform,
+                instance,
+            };
 
-        self.component.update(plugins, ctx);
+            component.write().unwrap().update(plugins, ctx);
+        }
     }
 
     pub fn editor_update(
@@ -156,16 +253,19 @@ impl Node {
         tree: &mut Tree,
         instance: &Instance,
     ) {
-        let ctx = ComponentCtx {
-            tree,
-            node_id,
-            plugins,
-            transform: &mut self.transform,
-            global_transform: &self.global_transform,
-            instance,
-        };
+        for component in self.components.components.values() {
+            let ctx = ComponentCtx {
+                tree,
+                node_id,
+                plugins,
+                components: &self.components,
+                transform: &mut self.transform,
+                global_transform: &self.global_transform,
+                instance,
+            };
 
-        self.component.editor_update(plugins, ctx);
+            component.write().unwrap().editor_update(plugins, ctx);
+        }
     }
 
     pub fn render(
@@ -177,18 +277,21 @@ impl Node {
         instance: &Instance,
         render_pass: &mut EmptyRenderPass<'_, '_, '_, format::TargetFormat, format::Depth32Float>,
     ) {
-        let ctx = ComponentRenderCtx {
-            viewport_camera,
-            instance,
-            node_id,
-            tree,
-            plugins,
-            transform: &mut self.transform,
-            global_transform: &self.global_transform,
-            render_pass,
-        };
+        for component in self.components.components.values() {
+            let ctx = ComponentRenderCtx {
+                viewport_camera,
+                instance,
+                node_id,
+                tree,
+                plugins,
+                components: &self.components,
+                transform: &mut self.transform,
+                global_transform: &self.global_transform,
+                render_pass,
+            };
 
-        self.component.render(plugins, ctx);
+            component.write().unwrap().render(plugins, ctx);
+        }
     }
 
     pub fn viewport_render(
@@ -200,18 +303,21 @@ impl Node {
         instance: &Instance,
         render_pass: &mut EmptyRenderPass<'_, '_, '_, format::TargetFormat, format::Depth32Float>,
     ) {
-        let ctx = ComponentRenderCtx {
-            viewport_camera,
-            instance,
-            node_id,
-            tree,
-            plugins,
-            transform: &mut self.transform,
-            global_transform: &self.global_transform,
-            render_pass,
-        };
+        for component in self.components.components.values() {
+            let ctx = ComponentRenderCtx {
+                viewport_camera,
+                instance,
+                node_id,
+                tree,
+                plugins,
+                components: &self.components,
+                transform: &mut self.transform,
+                global_transform: &self.global_transform,
+                render_pass,
+            };
 
-        self.component.viewport_render(plugins, ctx);
+            component.write().unwrap().viewport_render(plugins, ctx);
+        }
     }
 
     pub fn viewport_pick_render(
@@ -223,18 +329,21 @@ impl Node {
         instance: &Instance,
         render_pass: &mut RenderPass<'_, '_, '_, format::R32Uint, format::Depth32Float>,
     ) {
-        let ctx = ComponentPickCtx {
-            viewport_camera,
-            instance,
-            node_id,
-            tree,
-            plugins,
-            transform: &mut self.transform,
-            global_transform: &self.global_transform,
-            render_pass,
-        };
+        for component in self.components.components.values() {
+            let ctx = ComponentPickCtx {
+                viewport_camera,
+                instance,
+                node_id,
+                tree,
+                plugins,
+                components: &self.components,
+                transform: &mut self.transform,
+                global_transform: &self.global_transform,
+                render_pass,
+            };
 
-        self.component.viewport_pick_render(plugins, ctx);
+            component.write().unwrap().viewport_pick_render(plugins, ctx);
+        }
     }
 
     pub fn despawn(
@@ -244,15 +353,18 @@ impl Node {
         tree: &mut Tree,
         instance: &Instance,
     ) {
-        let ctx = ComponentCtx {
-            tree,
-            node_id,
-            plugins,
-            transform: &mut self.transform,
-            global_transform: &self.global_transform,
-            instance,
-        };
+        for component in self.components.components.values() {
+            let ctx = ComponentCtx {
+                tree,
+                node_id,
+                plugins,
+                components: &self.components,
+                transform: &mut self.transform,
+                global_transform: &self.global_transform,
+                instance,
+            };
 
-        self.component.despawn(plugins, ctx);
+            component.write().unwrap().despawn(plugins, ctx);
+        }
     }
 }
