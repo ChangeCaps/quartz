@@ -36,7 +36,7 @@ impl<'a, P: Plugin> Drop for PluginGuard<'a, P> {
     }
 }
 
-struct PluginContainer {
+pub(crate) struct PluginContainer {
     taken: Arc<AtomicBool>,
     plugin: UnsafeCell<Box<dyn Plugin>>,
 }
@@ -93,7 +93,7 @@ impl PluginContainer {
 }
 
 pub struct Plugins {
-    plugins: HashMap<TypeId, PluginContainer>,
+    pub(crate) plugins: HashMap<String, PluginContainer>,
 }
 
 impl Plugins {
@@ -202,7 +202,7 @@ impl Plugins {
     }
 
     pub fn get<P: Plugin>(&self) -> Option<&P> {
-        let id = TypeId::of::<P>();
+        let id = P::long_name_const().to_string();
 
         if let Some(plugin) = self.plugins.get(&id) {
             if let Some(plugin) = plugin.get() {
@@ -216,25 +216,27 @@ impl Plugins {
     }
 
     pub fn get_mut<P: Plugin>(&self) -> Option<PluginGuard<P>> {
-        if let Some(plugin) = self.plugins.get(&TypeId::of::<P>()) {
+        let id = P::long_name_const();
+
+        if let Some(plugin) = self.plugins.get(id) {
             plugin.lock()
         } else {
             None
         }
     }
 
-    pub fn plugins(&self) -> Vec<TypeId> {
+    pub fn plugins(&self) -> Vec<String> {
         self.plugins.keys().cloned().collect()
     }
 
-    pub fn get_mut_dyn(&self, id: &TypeId, f: impl FnOnce(&mut dyn Plugin)) -> Result<(), ()> {
+    pub fn get_mut_dyn<O>(&self, id: &str, f: impl FnOnce(&mut dyn Plugin) -> O) -> Result<O, ()> {
         if let Some(plugin) = self.plugins.get(id) {
             if let Some(p) = plugin.take() {
-                f(p);
+                let out = f(p);
 
                 unsafe { plugin.put() };
 
-                Ok(())
+                Ok(out)
             } else {
                 Err(())
             }
@@ -248,13 +250,15 @@ impl Plugins {
     }
 
     pub fn register_plugin<P: Plugin>(&mut self, init_ctx: PluginInitCtx) {
-        let id = TypeId::of::<P>();
+        let id = P::long_name_const().to_string();
         self.plugins
             .insert(id, PluginContainer::new(Box::new(P::init(init_ctx))));
     }
 
     pub fn take<'a, P: Plugin>(&'a self) -> Option<&'a mut P> {
-        if let Some(plugin) = self.plugins.get(&TypeId::of::<P>()) {
+        let id = P::long_name_const();
+
+        if let Some(plugin) = self.plugins.get(id) {
             <dyn Any>::downcast_mut(plugin.take().unwrap().as_any_mut())
         } else {
             None
@@ -262,7 +266,9 @@ impl Plugins {
     }
 
     pub unsafe fn put<P: Plugin>(&self) {
-        if let Some(plugin) = self.plugins.get(&TypeId::of::<P>()) {
+        let id = P::long_name_const();
+
+        if let Some(plugin) = self.plugins.get(id) {
             plugin.put();
         }
     }
@@ -329,7 +335,7 @@ pub trait Plugin: PluginAny + Reflect + ReflectName {
     }
 }
 
-pub trait PluginFetch<'a> {
+pub trait PluginFetch<'a>: Sized {
     type Item;
 
     fn fetch<O>(plugins: &'a Plugins, f: impl FnOnce(Self::Item) -> O) -> O;
@@ -350,7 +356,6 @@ macro_rules! impl_fetch {
         impl<'a, $($ident),+> PluginFetch<'a> for ($($ident),+)
         where $($ident: Plugin),+
         {
-            #[allow(unused_parens)]
             type Item = ($(&'a mut $ident),+);
 
             #[inline(always)]

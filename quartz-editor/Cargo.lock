@@ -1502,6 +1502,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "egui",
+ "libloading 0.7.0",
  "log",
  "quartz-engine",
  "quartz-framework",

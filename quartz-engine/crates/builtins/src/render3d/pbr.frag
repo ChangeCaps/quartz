@@ -2,6 +2,7 @@
 
 layout(location = 0) in vec3 v_world_position;
 layout(location = 1) in vec3 v_world_normal;
+layout(location = 2) in vec4 v_color;
 
 layout(location = 0) out vec4 out_color;
 
@@ -44,11 +45,11 @@ layout(set = 1, binding = 0) uniform texture2DArray DirectionalShadowMaps;
 layout(set = 1, binding = 1) uniform sampler ShadowSampler;
 
 void main() {
-    vec3 color = vec3(1.0);
+    vec3 color = v_color.rgb;
 
     vec3 ambient = ambient.color.rgb * ambient.intensity;
 
-    float sky_diffuse = max(dot(normalize(v_world_normal), vec3(0.0, 1.0, 0.0)), 0.0);
+    float sky_diffuse = 0.5 + 0.5 * max(dot(normalize(v_world_normal), vec3(0.0, 1.0, 0.0)), 0.0);
 
     vec3 light = ambient * sky_diffuse;
     

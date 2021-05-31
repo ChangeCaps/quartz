@@ -55,9 +55,9 @@ impl Bridge {
 
         new(&mut types as *mut _);
 
-        let tree = crate::reflect::serde::TreeDeserializer {
+        let tree = crate::reflect::serde::SceneDeserializer {
             components: &types.components,
-            plugins: &types.plugins,
+            plugins: &mut types.plugins,
         }
         .deserialize(deserializer)
         .unwrap();

@@ -1,6 +1,7 @@
 use crate::component::*;
 use crate::node::*;
 use crate::plugin::*;
+use crate::scene::*;
 use crate::transform::*;
 use crate::tree::*;
 use linked_hash_map::LinkedHashMap;
@@ -10,6 +11,35 @@ use serde::{
     Deserialize, Serialize,
 };
 use std::sync::RwLock;
+
+impl<'a> Serialize for Scene<'a> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut state = serializer.serialize_struct("Scene", 2)?;
+
+        state.serialize_field("plugins", self.plugins)?;
+        state.serialize_field("tree", self.tree)?;
+
+        state.end()
+    }
+}
+
+impl Serialize for Plugins {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.plugins.serialize(serializer)
+    }
+}
+
+impl Serialize for PluginContainer {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.get().unwrap().serialize(serializer)
+    }
+}
+
+impl Serialize for dyn Plugin {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.as_serialize().serialize(serializer)
+    }
+}
 
 impl Serialize for Node {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -56,6 +86,150 @@ impl Serialize for Tree {
 impl Serialize for dyn ComponentPod {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         self.as_serialize().serialize(serializer)
+    }
+}
+
+pub(crate) struct SceneDeserializer<'a> {
+    pub components: &'a Components,
+    pub plugins: &'a mut Plugins,
+}
+
+impl<'a, 'de> DeserializeSeed<'de> for SceneDeserializer<'a> {
+    type Value = Tree;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(field_identifier, rename_all = "lowercase")]
+        enum Field {
+            Plugins,
+            Tree,
+        }
+
+        struct SceneVisitor<'a> {
+            components: &'a Components,
+            plugins: &'a mut Plugins,
+        }
+
+        impl<'a, 'de> Visitor<'de> for SceneVisitor<'a> {
+            type Value = Tree;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("struct Scene")?;
+
+                Ok(())
+            }
+
+            fn visit_seq<V: SeqAccess<'de>>(self, mut seq: V) -> Result<Tree, V::Error> {
+                seq.next_element_seed(TreeDeserializer {
+                    plugins: self.plugins,
+                    components: self.components,
+                })?.unwrap();
+
+                Ok(seq.next_element_seed(TreeDeserializer {
+                    plugins: self.plugins,
+                    components: self.components,
+                })?.unwrap())
+            }
+
+            fn visit_map<V: MapAccess<'de>>(self, mut map: V) -> Result<Tree, V::Error> {
+                let mut plugins = None;
+                let mut tree = None;
+
+                while let Some(key) = map.next_key()? {
+                    match key {
+                        Field::Plugins => {
+                            if plugins.is_some() {
+                                return Err(de::Error::duplicate_field("plugins"));
+                            }
+
+                            plugins = Some(map.next_value_seed(PluginsDeserializer {
+                                plugins: self.plugins
+                            })?);
+                        }
+                        Field::Tree => {
+                            if tree.is_some() {
+                                return Err(de::Error::duplicate_field("tree"));
+                            }
+
+                            tree = Some(map.next_value_seed(
+                                TreeDeserializer {
+                                    plugins: self.plugins,
+                                    components: self.components,
+                                }
+                            )?);
+                        }
+                    }
+                }
+
+                let _ = plugins.ok_or_else(|| de::Error::missing_field("plugins"))?;
+                let tree = tree.ok_or_else(|| de::Error::missing_field("tree"))?;
+
+                Ok(tree)
+            }
+        }
+
+        const FIELDS: &[&str] = &["plugins", "tree"];
+        deserializer.deserialize_struct(
+            "Scene",
+            FIELDS,
+            SceneVisitor {
+                components: self.components,
+                plugins: self.plugins,
+            },
+        )
+    }
+}
+
+pub(crate) struct PluginsDeserializer<'a> {
+    pub plugins: &'a mut Plugins,
+}
+
+impl<'a, 'de> DeserializeSeed<'de> for PluginsDeserializer<'a> {
+    type Value = ();
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+        struct NodesVisitor<'a> {
+            plugins: &'a mut Plugins,
+        }
+
+        impl<'a, 'de> Visitor<'de> for NodesVisitor<'a> {
+            type Value = ();
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("NodeId: Node")?;
+
+                Ok(())
+            }
+
+            fn visit_map<V: MapAccess<'de>>(self, mut map: V) -> Result<Self::Value, V::Error> {
+                while let Some(key) = map.next_key()? {
+                    self.plugins.get_mut_dyn(key, |plugin| {
+                        map.next_value_seed(PluginDeserializer {
+                            plugin,
+                        })
+                    }).unwrap()?;
+                }
+
+                Ok(())
+            }
+        }
+
+        deserializer.deserialize_map(NodesVisitor {
+            plugins: self.plugins,
+        })
+    }
+}
+
+pub(crate) struct PluginDeserializer<'a> {
+    pub plugin: &'a mut dyn Plugin,
+}
+
+impl<'a, 'de> DeserializeSeed<'de> for PluginDeserializer<'a> {
+    type Value = ();
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+        self.plugin.reflect(&mut <dyn erased_serde::Deserializer>::erase(deserializer));
+        Ok(())
     }
 }
 

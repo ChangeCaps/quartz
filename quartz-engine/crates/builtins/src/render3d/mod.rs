@@ -372,6 +372,7 @@ impl Default for Mesh3d {
         mesh.add_attribute::<Vec3>("vertex_position");
         mesh.add_attribute::<Vec3>("vertex_normal");
         mesh.add_attribute::<Vec2>("vertex_uv");
+        mesh.add_attribute::<Vec4>("vertex_color");
 
         Self { mesh }
     }
@@ -428,6 +429,7 @@ impl Default for ProceduralMesh3d {
         mesh.add_attribute::<Vec3>("vertex_position");
         mesh.add_attribute::<Vec3>("vertex_normal");
         mesh.add_attribute::<Vec2>("vertex_uv");
+        mesh.add_attribute::<Vec4>("vertex_color");
 
         Self { mesh }
     }

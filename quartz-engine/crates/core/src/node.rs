@@ -134,7 +134,7 @@ impl Node {
                     let component = component.read().unwrap();
 
                     ui.label(component.short_name());
-                    
+
                     if ui.button("-").clicked() {
                         remove.push(component.long_name().to_string());
                     }
@@ -342,7 +342,10 @@ impl Node {
                 render_pass,
             };
 
-            component.write().unwrap().viewport_pick_render(plugins, ctx);
+            component
+                .write()
+                .unwrap()
+                .viewport_pick_render(plugins, ctx);
         }
     }
 

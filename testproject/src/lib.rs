@@ -2,15 +2,19 @@ use noise::NoiseFn;
 use quartz_engine::egui::*;
 use quartz_engine::prelude::*;
 
-pub fn detailed_noise(p: Vec3, detail: u32) -> f32 {
-    let noise = noise::SuperSimplex::new();
-
+pub fn detailed_noise(noise: impl NoiseFn<[f64; 2]>, p: Vec3, detail: u32) -> f32 {
     let mut height = 0.0;
+    let mut disp = 0.0;
+    let mut freq = 1.0;
+    let mut amp = 0.5;
 
-    for i in 0..detail {
-        let p = p * 2u32.pow(i) as f32;
-        height += noise.get([p.x as f64, p.z as f64]) as f32 * 2u32.pow(detail - i) as f32
-            / 2u32.pow(detail) as f32;
+    for _ in 0..detail {
+        let p = (p + Vec3::splat(disp)) * freq;
+        height += noise.get([p.x as f64, p.z as f64]) as f32 * amp;
+
+        freq *= 2.0;
+        amp /= 2.0;
+        disp += 50.0;
     }
 
     height
@@ -21,6 +25,10 @@ pub struct Terrain {
     pub size: u32,
     pub scale: f32,
     pub height: f32,
+    pub detail: u32,
+    pub mountain_scale: f32,
+    pub mountain_height: f32,
+    pub mountain_detail: u32,
 }
 
 impl Default for Terrain {
@@ -29,6 +37,10 @@ impl Default for Terrain {
             size: 10,
             scale: 0.2,
             height: 1.0,
+            detail: 4,
+            mountain_scale: 1.0,
+            mountain_height: 1.0,
+            mountain_detail: 4,
         }
     }
 }
@@ -42,6 +54,9 @@ impl Terrain {
 
             let mut positions = Vec::new();
             let mut indices = Vec::new();
+            let mut colors = Vec::new();
+
+            let noise = noise::OpenSimplex::new();
 
             for x in 0..self.size {
                 for z in 0..self.size {
@@ -49,15 +64,27 @@ impl Terrain {
                     pos -= Vec3::splat(self.size as f32 / 2.0);
                     pos *= self.scale;
 
-                    let h = |mut p: Vec3| {
-                        p *= 0.1;
-                        detailed_noise(p, 4)
+                    let mountains = 1.0
+                        - detailed_noise(&noise, pos * self.mountain_scale * 0.1, self.mountain_detail)
+                            .abs();
+
+                    let hills = detailed_noise(&noise, pos * 0.1 + Vec3::splat(-100.0), self.detail);
+
+                    let mountain_mask = hills.max(0.0).powi(2);
+
+                    let height =
+                        hills * self.height + mountain_mask * mountains * self.mountain_height;
+
+                    pos.y = height;
+
+                    let color = if mountain_mask > 0.0 {
+                        Color::rgb(0.3, 0.3, 0.3)
+                    } else {
+                        Color::rgb(0.1, 0.7, 0.2)
                     };
 
-                    let y = h(pos);
-                    pos.y = y * self.height;
-
                     positions.push(pos);
+                    colors.push(color);
                 }
             }
 
@@ -98,6 +125,7 @@ impl Terrain {
 
             mesh.mesh.set_attribute("vertex_position", positions);
             mesh.mesh.set_attribute("vertex_normal", normals);
+            mesh.mesh.set_attribute("vertex_color", colors);
             mesh.mesh.set_indices(indices);
         }
     }
@@ -107,11 +135,9 @@ impl Component for Terrain {
     type Plugins = ();
 
     fn inspector_ui(&mut self, _: (), ctx: ComponentCtx, ui: &mut Ui) {
-        if ui.button("Generate Mesh").clicked() {
+        if ui.button("Generate Mesh").clicked() || self.inspect(ui) {
             self.generate(ctx);
         }
-
-        self.inspect(ui);
     }
 
     fn start(&mut self, _: (), ctx: ComponentCtx) {

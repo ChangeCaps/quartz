@@ -8,9 +8,7 @@ use quartz_engine::{
     prelude::{Vec2, *},
 };
 use quartz_framework::{prelude::*, render::wgpu, winit};
-use std::any::TypeId;
 use std::collections::HashMap;
-use std::io::prelude::*;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use winit::event::{self, ElementState, MouseScrollDelta, VirtualKeyCode as VKey, WindowEvent};
@@ -114,7 +112,7 @@ pub struct Viewport {
 pub enum Selection {
     None,
     Node(NodeId),
-    Plugin(TypeId),
+    Plugin(String),
 }
 
 #[derive(Clap)]
@@ -296,11 +294,13 @@ impl EditorState {
                 log::debug!("saving scene to: {}", path.display());
 
                 if let Ok(file) = std::fs::File::create(path) {
-                    let mut serializer = ron::Serializer::new(file, Some(ron::ser::PrettyConfig::default()), true).unwrap();
-                        //serde_cbor::Serializer::new(serde_cbor::ser::IoWrite::new(file));
+                    let mut serializer =
+                        ron::Serializer::new(file, Some(ron::ser::PrettyConfig::default()), true)
+                            .unwrap();
+                    //serde_cbor::Serializer::new(serde_cbor::ser::IoWrite::new(file));
 
                     if let Some(state) = &game.state {
-                        state.serialize_tree(&mut serializer).unwrap();
+                        state.serialize_scene(&mut serializer).unwrap();
                     }
                 }
             }
@@ -310,7 +310,7 @@ impl EditorState {
     pub fn reload_game(&mut self, scene: &[u8], instance: &Instance) {
         if let Some(game) = &mut self.game {
             let mut deserializer = ron::Deserializer::from_bytes(scene).unwrap();
-                //serde_cbor::Deserializer::from_slice(scene);
+            //serde_cbor::Deserializer::from_slice(scene);
 
             game.reload(&mut deserializer, instance);
 
@@ -325,16 +325,16 @@ impl EditorState {
     pub fn load(&mut self, scene: Option<&[u8]>, instance: &Instance) {
         let mut game = if let Some(scene) = scene {
             let mut deserializer = ron::Deserializer::from_bytes(scene).unwrap();
-                //serde_cbor::Deserializer::from_slice(scene);
+            //serde_cbor::Deserializer::from_slice(scene);
 
             GameState::deserialize(
                 &mut deserializer,
-                &self.project.path.join(LIB_PATH).join("testproject.dll"),
+                &self.project.path.join(LIB_PATH).join(libloading::library_filename("testproject")),
                 instance,
             )
         } else {
             GameState::load(
-                &self.project.path.join(LIB_PATH).join("testproject.dll"),
+                &self.project.path.join(LIB_PATH).join(libloading::library_filename("testproject")),
                 instance,
             )
         };

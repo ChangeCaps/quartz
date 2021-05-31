@@ -50,6 +50,15 @@ impl Color {
             _ => panic!("format not supported"),
         }
     }
+
+    pub fn lerp(self, other: Self, lerp: f32) -> Self {
+        Self {
+            r: other.r * lerp + self.r * (1.0 - lerp),
+            g: other.g * lerp + self.g * (1.0 - lerp),
+            b: other.b * lerp + self.b * (1.0 - lerp),
+            a: other.a * lerp + self.a * (1.0 - lerp),
+        }
+    }
 }
 
 impl Into<wgpu::Color> for Color {

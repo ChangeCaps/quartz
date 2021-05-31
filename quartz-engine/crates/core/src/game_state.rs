@@ -3,6 +3,7 @@ use crate::plugin::*;
 use crate::render::prelude::*;
 use crate::render::wgpu;
 use crate::tree::*;
+use crate::scene::*;
 use serde::Serialize;
 
 pub struct GameState {
@@ -209,7 +210,10 @@ impl GameState {
             .viewport_pick_render(&self.plugins, camera, pipeline, instance, &mut render_pass);
     }
 
-    pub fn serialize_tree<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        self.tree.serialize(serializer)
+    pub fn serialize_scene<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        Scene {
+            tree: &self.tree,
+            plugins: &self.plugins,
+        }.serialize(serializer)
     }
 }

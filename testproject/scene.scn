@@ -1,92 +1,71 @@
-Tree(
-    nodes: {
-        NodeId(0): Node(
-            name: "Terrain",
-            transform: Transform(
-                translation: Vec3(0, 0, -2),
-                rotation: Quat(0, 0, 0, 1),
-                scale: Vec3(1, 1, 1),
-            ),
-            component: {
-                "testproject::Terrain": Terrain(
-                    size: 100,
-                    scale: 0.2,
-                    height: 1,
+Scene(
+    plugins: {
+        "quartz_engine_builtins::render3d::Render3dPlugin": Render3dPlugin(
+            ambient_light: AmbientLight(
+                color: Color(
+                    r: 0.33045554,
+                    g: 0.45328495,
+                    b: 0.6877774,
+                    a: 1,
                 ),
-                "quartz_engine_builtins::render3d::ProceduralMesh3d": ProceduralMesh3d,
-            },
-        ),
-        NodeId(1): Node(
-            name: "Sun",
-            transform: Transform(
-                translation: Vec3(0, 56.6, 0),
-                rotation: Quat(0, 0, 0, 1),
-                scale: Vec3(1, 1, 1),
+                intensity: 0.3,
             ),
-            component: {
-                "quartz_engine_builtins::render3d::DirectionalLight3d": DirectionalLight3d(
-                    index: 0,
-                    color: Color(
-                        r: 1,
-                        g: 1,
-                        b: 1,
-                        a: 1,
-                    ),
-                    direction: Vec3(0, -1, 2),
-                    intensity: 0.7,
-                    shadows: true,
-                ),
-            },
-        ),
-        NodeId(2): Node(
-            name: "Terrain2",
-            transform: Transform(
-                translation: Vec3(0, 7.2, -13.5),
-                rotation: Quat(-0.1305262, 0, 0, 0.9914449),
-                scale: Vec3(1, 1, 1),
-            ),
-            component: {
-                "testproject::Terrain": Terrain(
-                    size: 50,
-                    scale: 0.2,
-                    height: 1,
-                ),
-                "quartz_engine_builtins::render3d::ProceduralMesh3d": ProceduralMesh3d,
-            },
-        ),
-        NodeId(3): Node(
-            name: "Camera",
-            transform: Transform(
-                translation: Vec3(0, 6, 4.3),
-                rotation: Quat(-0.25881907, 0, 0, 0.9659259),
-                scale: Vec3(1, 1, 1),
-            ),
-            component: {
-                "quartz_engine_builtins::render3d::Camera3d": Camera3d(
-                    projection: PerspectiveProjection(
-                        aspect: 1,
-                        fov: 1.5707964,
-                        far: 1000,
-                        near: 1,
-                    ),
-                ),
-            },
         ),
     },
-    children: {
-        NodeId(1): [],
-        NodeId(3): [],
-        NodeId(2): [],
-        NodeId(0): [
+    tree: Tree(
+        nodes: {
+            NodeId(0): Node(
+                name: "Terrain",
+                transform: Transform(
+                    translation: Vec3(0, 0, 0),
+                    rotation: Quat(0, 0, 0, 1),
+                    scale: Vec3(1, 1, 1),
+                ),
+                component: {
+                    "testproject::Terrain": Terrain(
+                        size: 500,
+                        scale: 0.2,
+                        height: 1,
+                        detail: 2,
+                        mountain_scale: 2,
+                        mountain_height: 26.8,
+                        mountain_detail: 5,
+                    ),
+                    "quartz_engine_builtins::render3d::ProceduralMesh3d": ProceduralMesh3d,
+                },
+            ),
+            NodeId(1): Node(
+                name: "Sun",
+                transform: Transform(
+                    translation: Vec3(0, 50, -76),
+                    rotation: Quat(0, 0, 0, 1),
+                    scale: Vec3(1, 1, 1),
+                ),
+                component: {
+                    "quartz_engine_builtins::render3d::DirectionalLight3d": DirectionalLight3d(
+                        index: 0,
+                        color: Color(
+                            r: 0.70940226,
+                            g: 0.5607153,
+                            b: 0.4295209,
+                            a: 1,
+                        ),
+                        direction: Vec3(1, -1, 2),
+                        intensity: 0.7,
+                        shadows: true,
+                    ),
+                },
+            ),
+        },
+        children: {
+            NodeId(0): [],
+            NodeId(1): [],
+        },
+        parents: {},
+        base: [
+            NodeId(0),
+            NodeId(1),
             NodeId(2),
         ],
-    },
-    parents: {
-        NodeId(2): NodeId(0),
-    },
-    base: [
-        NodeId(3),
-        NodeId(1),
-        NodeId(0),
-    ],
+    ),
 )

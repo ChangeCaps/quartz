@@ -92,7 +92,8 @@ impl EditorState {
                                         .plugins
                                         .get_mut_dyn(&plugin_id, |plugin| {
                                             if ui.button(plugin.short_name()).clicked() {
-                                                *selection = Selection::Plugin(plugin_id);
+                                                *selection =
+                                                    Selection::Plugin(plugin_id.to_string());
                                             }
                                         })
                                         .unwrap();

@@ -46,14 +46,14 @@ pub struct ComponentPickCtx<'a, 'b, 'c, 'd> {
 }
 
 pub trait InitComponent: Component {
-    fn init(state: <Self::Plugins as PluginFetch<'_>>::Item) -> Self;
+    fn init(state: <Self::Plugins as PluginFetch>::Item) -> Self;
 }
 
 impl<T> InitComponent for T
 where
     T: Default + Component,
 {
-    fn init(_: <T::Plugins as PluginFetch<'_>>::Item) -> Self {
+    fn init(_: <Self::Plugins as PluginFetch>::Item) -> Self {
         Default::default()
     }
 }
@@ -64,40 +64,25 @@ pub trait Component: 'static {
 
     fn inspector_ui(
         &mut self,
-        plugins: <Self::Plugins as PluginFetch<'_>>::Item,
+        plugins: <Self::Plugins as PluginFetch>::Item,
         ctx: ComponentCtx,
         ui: &mut Ui,
     ) {
     }
 
-    fn start(&mut self, plugins: <Self::Plugins as PluginFetch<'_>>::Item, ctx: ComponentCtx) {}
+    fn start(&mut self, plugins: <Self::Plugins as PluginFetch>::Item, ctx: ComponentCtx) {}
 
-    fn editor_start(
-        &mut self,
-        plugins: <Self::Plugins as PluginFetch<'_>>::Item,
-        ctx: ComponentCtx,
-    ) {
-    }
+    fn editor_start(&mut self, plugins: <Self::Plugins as PluginFetch>::Item, ctx: ComponentCtx) {}
 
-    fn update(&mut self, plugins: <Self::Plugins as PluginFetch<'_>>::Item, ctx: ComponentCtx) {}
+    fn update(&mut self, plugins: <Self::Plugins as PluginFetch>::Item, ctx: ComponentCtx) {}
 
-    fn editor_update(
-        &mut self,
-        plugins: <Self::Plugins as PluginFetch<'_>>::Item,
-        ctx: ComponentCtx,
-    ) {
-    }
+    fn editor_update(&mut self, plugins: <Self::Plugins as PluginFetch>::Item, ctx: ComponentCtx) {}
 
-    fn render(
-        &mut self,
-        plugins: <Self::Plugins as PluginFetch<'_>>::Item,
-        ctx: ComponentRenderCtx,
-    ) {
-    }
+    fn render(&mut self, plugins: <Self::Plugins as PluginFetch>::Item, ctx: ComponentRenderCtx) {}
 
     fn viewport_render(
         &mut self,
-        plugins: <Self::Plugins as PluginFetch<'_>>::Item,
+        plugins: <Self::Plugins as PluginFetch>::Item,
         ctx: ComponentRenderCtx,
     ) {
         self.render(plugins, ctx);
@@ -105,12 +90,12 @@ pub trait Component: 'static {
 
     fn viewport_pick_render(
         &mut self,
-        plugins: <Self::Plugins as PluginFetch<'_>>::Item,
+        plugins: <Self::Plugins as PluginFetch>::Item,
         ctx: ComponentPickCtx,
     ) {
     }
 
-    fn despawn(&mut self, plugins: <Self::Plugins as PluginFetch<'_>>::Item, ctx: ComponentCtx) {}
+    fn despawn(&mut self, plugins: <Self::Plugins as PluginFetch>::Item, ctx: ComponentCtx) {}
 }
 
 pub trait ToPod {
