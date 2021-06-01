@@ -9,6 +9,7 @@ use syn::{
 #[derive(Default)]
 struct ReflectFieldAttributes {
     pub ignore: bool,
+    pub reflect: bool,
 }
 
 impl ReflectFieldAttributes {
@@ -18,10 +19,16 @@ impl ReflectFieldAttributes {
             .find(|a| *a.path.get_ident().as_ref().unwrap() == REFLECT_ATTRIBUTE_NAME)
             .map_or_else(Self::default, |a| {
                 syn::custom_keyword!(ignore);
+                syn::custom_keyword!(reflect);
+
                 let mut attributes = Self::default();
                 a.parse_args_with(|input: ParseStream| {
                     if input.parse::<Option<ignore>>()?.is_some() {
                         attributes.ignore = true;
+                    }
+
+                    if input.parse::<Option<reflect>>()?.is_some() {
+                        attributes.reflect = true;
                     }
 
                     Ok(())
@@ -152,9 +159,30 @@ fn reflect(ident: &Ident, generics: &Generics, data: &Data) -> TokenStream {
                     }
                 };
 
+                
                 let visit_seq = {
-                    let idents = idents.clone();
-                    let indices = 0..idents.len();
+                    let mut index = 0usize;
+
+                    let fields_seq = fields.iter().map(|f| {
+                        index += 1;
+
+                        let attrs = ReflectFieldAttributes::parse(&f.attrs);
+                        let ident = f.ident.as_ref().unwrap();
+    
+                        if attrs.reflect {
+                            quote! {
+                                seq.next_element_seed(
+                                    quartz_engine::core::reflect::ReflectDeserializer {
+                                        reflect: &mut self.#ident,
+                                    }
+                                )?.ok_or(Error::invalid_length(#index, &self))?;
+                            }
+                        } else {
+                            quote! {
+                                self.#ident = seq.next_element()?.ok_or(Error::invalid_length(#index, &self))?;
+                            }
+                        }
+                    });
 
                     quote! {
                         fn visit_seq<V>(self, mut seq: V) -> Result<(), V::Error>
@@ -164,13 +192,36 @@ fn reflect(ident: &Ident, generics: &Generics, data: &Data) -> TokenStream {
                             use quartz_engine::core::serde::de::{SeqAccess, Error};
 
                             #(
-                                self.#idents = seq.next_element()?.ok_or(Error::invalid_length(#indices, &self))?;
+                                #fields_seq
                             )*
 
                             Ok(())
                         }
                     }
                 };
+
+                let fields_map = fields.iter().map(|f| {
+                    let attrs = ReflectFieldAttributes::parse(&f.attrs);
+                    let ident = f.ident.as_ref().unwrap();
+
+                    if attrs.reflect {
+                        quote!(
+                            Field::#ident => {
+                                map.next_value_seed(
+                                    quartz_engine::core::reflect::ReflectDeserializer {
+                                        reflect: &mut self.#ident,
+                                    }
+                                )?;
+                            }
+                        )
+                    } else {
+                        quote!(
+                            Field::#ident => {
+                                self.#ident = map.next_value()?;
+                            }
+                        )
+                    }
+                });
 
                 let type_params = generics.type_params().map(|t| &t.ident);
 
@@ -236,10 +287,8 @@ fn reflect(ident: &Ident, generics: &Generics, data: &Data) -> TokenStream {
                                 while let Some(key) = map.next_key::<Field>()? {
                                     match key {
                                         #(
-                                            Field::#idents => {
-                                                self.#idents = map.next_value()?;
-                                            },
-                                        )*
+                                            #fields_map
+                                        ),*
                                     }
                                 }
 

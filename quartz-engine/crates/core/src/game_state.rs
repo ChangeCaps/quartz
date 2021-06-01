@@ -2,8 +2,8 @@ use crate::component::*;
 use crate::plugin::*;
 use crate::render::prelude::*;
 use crate::render::wgpu;
-use crate::tree::*;
 use crate::scene::*;
+use crate::tree::*;
 use serde::Serialize;
 
 pub struct GameState {
@@ -81,6 +81,14 @@ impl GameState {
         for node_id in nodes {
             self.tree.remove_recursive(node_id);
         }
+
+        let nodes = std::mem::replace(&mut self.tree.added, Vec::new());
+
+        for node_id in nodes {
+            if let Some(mut node) = self.tree.get_node(node_id) {
+                node.start(&self.plugins, &node_id, &mut self.tree, instance);
+            }
+        }
     }
 
     pub fn editor_update(&mut self, target_format: format::TargetFormat, instance: &Instance) {
@@ -106,6 +114,14 @@ impl GameState {
 
         for node_id in nodes {
             self.tree.remove_recursive(node_id);
+        }
+
+        let nodes = std::mem::replace(&mut self.tree.added, Vec::new());
+
+        for node_id in nodes {
+            if let Some(mut node) = self.tree.get_node(node_id) {
+                node.editor_start(&self.plugins, &node_id, &mut self.tree, instance);
+            }
         }
     }
 
@@ -214,6 +230,7 @@ impl GameState {
         Scene {
             tree: &self.tree,
             plugins: &self.plugins,
-        }.serialize(serializer)
+        }
+        .serialize(serializer)
     }
 }

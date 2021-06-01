@@ -172,6 +172,8 @@ impl Plugin for Render3dPlugin {
     fn render(&mut self, ctx: PluginRenderCtx) {
         self.pbr_pipeline
             .bind_uniform("AmbientLight", &self.ambient_light);
+        self.pbr_pipeline.bind_uniform("PointLights", &self.point_lights);
+        self.pbr_pipeline.bind_uniform("DirectionalLights", &self.directional_lights);
 
         if let Some(main_camera) = self.main_camera {
             if let Some(node) = ctx.tree.get_node(main_camera) {
@@ -397,12 +399,6 @@ impl Component for Mesh3d {
 
             render.pbr_pipeline.bind_uniform("Transform", &model);
             render.pbr_pipeline.bind_uniform("Camera", view_proj);
-            render
-                .pbr_pipeline
-                .bind_uniform("PointLights", &render.point_lights);
-            render
-                .pbr_pipeline
-                .bind_uniform("DirectionalLights", &render.directional_lights);
 
             ctx.render_pass
                 .with_pipeline(&render.pbr_pipeline)
@@ -454,12 +450,6 @@ impl Component for ProceduralMesh3d {
 
             render.pbr_pipeline.bind_uniform("Transform", &model);
             render.pbr_pipeline.bind_uniform("Camera", view_proj);
-            render
-                .pbr_pipeline
-                .bind_uniform("PointLights", &render.point_lights);
-            render
-                .pbr_pipeline
-                .bind_uniform("DirectionalLights", &render.directional_lights);
 
             ctx.render_pass
                 .with_pipeline(&render.pbr_pipeline)

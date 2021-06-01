@@ -89,11 +89,15 @@ impl Bindings {
         self.bindings.get_mut(ident)
     }
 
+    pub fn len(&self) -> usize {
+        self.bindings.len()
+    }
+
     pub fn generate_groups<C: TextureFormat, D: TextureFormat>(
         &mut self,
         pipeline: &RenderPipeline<C, D>,
         instance: &Instance,
-    ) -> Vec<Arc<wgpu::BindGroup>> {
+    ) -> Vec<wgpu::BindGroup> {
         pipeline
             .shader_layout
             .bind_groups
@@ -118,15 +122,13 @@ impl Bindings {
                     })
                     .collect::<Vec<_>>();
 
-                Arc::new(
-                    instance
-                        .device
-                        .create_bind_group(&wgpu::BindGroupDescriptor {
-                            label: Some("Bind Group"),
-                            layout: bind_group.layout.as_ref().unwrap(),
-                            entries: &entries,
-                        }),
-                )
+                instance
+                    .device
+                    .create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("Bind Group"),
+                        layout: bind_group.layout.as_ref().unwrap(),
+                        entries: &entries,
+                    })
             })
             .collect::<Vec<_>>()
     }
@@ -235,9 +237,7 @@ impl<C: TextureFormat, D: TextureFormat + Default> PipelineDescriptor<C, D> {
                 write_mask: ColorWrite::ALL,
                 format,
             }],
-            depth_stencil: Some(DepthStencilState {
-                ..Default::default()
-            }),
+            depth_stencil: None,
             primitive: PrimitiveState {
                 topology: PrimitiveTopology::TriangleList,
                 strip_index_format: None,
@@ -508,6 +508,13 @@ impl<C: TextureFormat, D: TextureFormat> RenderPipeline<C, D> {
         })
     }
 
+    pub fn generate_groups(&self, instance: &Instance) -> Vec<wgpu::BindGroup> {
+        self.bindings
+            .lock()
+            .unwrap()
+            .generate_groups(self, instance)
+    }
+
     /// Sets entire [`Bindings`].
     pub fn set_bindings(&self, bindings: Bindings) {
         *self.bindings.lock().unwrap() = bindings;
@@ -538,20 +545,5 @@ impl<C: TextureFormat, D: TextureFormat> RenderPipeline<C, D> {
             drop(bindings);
             self.bind(ident, UniformBinding::new(uniform));
         }
-    }
-
-    /// Updates the bindings on the gpu.
-    pub fn submit_bindings(&self, instance: &Instance) {
-        if !self.bindings_changed.swap(false, Ordering::SeqCst) {
-            return;
-        }
-
-        let bind_groups = self
-            .bindings
-            .lock()
-            .unwrap()
-            .generate_groups(self, instance);
-
-        *self.bind_groups.lock().unwrap() = bind_groups;
     }
 }

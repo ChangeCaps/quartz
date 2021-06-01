@@ -67,6 +67,10 @@ impl Instance {
         (instance, swap_chain)
     }
 
+    pub fn poll(&self, maintain: wgpu::Maintain) {
+        self.device.poll(maintain);
+    }
+
     pub fn render(&self) -> RenderCtx<'_> {
         let encoder = self
             .device

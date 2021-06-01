@@ -4,6 +4,7 @@ use crate::state::*;
 use crate::window::*;
 use futures::executor::block_on;
 use quartz_render::prelude::*;
+use quartz_render::wgpu;
 use winit::{
     event::*,
     event_loop::{ControlFlow, EventLoop},
@@ -52,6 +53,8 @@ impl App {
         );
 
         event_loop.run(move |event, _, control_flow| {
+            instance.poll(wgpu::Maintain::Wait);
+
             *control_flow = ControlFlow::Poll;
 
             if window_descriptor.cursor_grabbed {

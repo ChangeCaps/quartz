@@ -14,6 +14,7 @@ pub struct Tree {
     pub(crate) base: HashSet<NodeId>,
     pub(crate) next_node_id: NodeId,
     pub(crate) despawn: Vec<NodeId>,
+    pub(crate) added: Vec<NodeId>,
 }
 
 impl Tree {
@@ -25,6 +26,7 @@ impl Tree {
             base: HashSet::new(),
             next_node_id: NodeId(0),
             despawn: Vec::new(),
+            added: Vec::new(),
         }
     }
 
@@ -48,6 +50,7 @@ impl Tree {
         self.nodes.insert(id, NodeContainer::new(node));
         self.base.insert(id);
         self.children.insert(id, Vec::new());
+        self.added.push(id);
 
         id
     }
@@ -141,6 +144,8 @@ impl Tree {
         instance: &Instance,
     ) {
         if let Some(mut node) = self.get_node(node_id) {
+            self.base.remove(node_id);
+
             node.despawn(plugins, node_id, self, instance);
 
             for child in self.get_children(*node_id).clone() {

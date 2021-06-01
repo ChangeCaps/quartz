@@ -140,6 +140,7 @@ pub struct EditorState {
     pub building: Option<std::process::Child>,
     pub selection: Selection,
     pub viewports: Vec<Viewport>,
+    pub mesh: Mesh,
 }
 
 impl EditorState {
@@ -207,6 +208,12 @@ impl EditorState {
             ),
         );
 
+        let mut mesh = Mesh::new();
+
+        mesh.add_attribute::<Vec2>("pos");
+        mesh.add_attribute::<Vec2>("uv");
+        mesh.add_attribute::<Color>("color");
+
         Self {
             egui_pipeline,
             egui_ctx: CtxRef::default(),
@@ -235,6 +242,7 @@ impl EditorState {
                     ty: ViewportType::Game,
                 },
             ],
+            mesh,
         }
     }
 
@@ -547,6 +555,8 @@ impl State for EditorState {
         let egui_texture = self.egui_ctx.texture();
 
         if self.egui_texture_version != Some(egui_texture.version) {
+            log::debug!("Recreating egui texture");
+
             self.egui_texture_version = Some(egui_texture.version);
 
             self.egui_texture = Texture2d::new(
@@ -587,6 +597,8 @@ impl State for EditorState {
                                     || self.pick_texture.dimensions.height
                                         != texture.dimensions.height
                                 {
+                                    log::debug!("Resizing pick texture");
+
                                     self.pick_texture = Texture2d::new(
                                         &TextureDescriptor::default_settings(
                                             texture.dimensions.clone(),
@@ -631,8 +643,13 @@ impl State for EditorState {
 
         let mut pass = render_ctx.render_pass(&desc, &self.egui_pipeline);
 
+        self.egui_pipeline.bind_uniform("ClipRect", &Vec4::default());
+
+        println!("{}", clipped_meshes.len());
+
         for ClippedMesh(rect, mesh) in &clipped_meshes {
             // TODO: use scissor rect
+            /*
             let clip_rect = Vec4::new(rect.min.x, rect.min.y, rect.max.x, rect.max.y);
             self.egui_pipeline.bind_uniform("ClipRect", &clip_rect);
 
@@ -644,7 +661,9 @@ impl State for EditorState {
                     }
                 }
             }
+            */
 
+            /*
             let indices = mesh.indices.clone();
             let mut pos = Vec::with_capacity(mesh.vertices.len());
             let mut uv = Vec::with_capacity(mesh.vertices.len());
@@ -672,14 +691,16 @@ impl State for EditorState {
                     ));
                 }
             }
+            */
 
-            let mut mesh = Mesh::new();
-            mesh.set_attribute("pos", pos);
-            mesh.set_attribute("uv", uv);
-            mesh.set_attribute("color", color);
-            mesh.set_indices(indices);
+            /*
+            self.mesh.set_attribute("pos", pos);
+            self.mesh.set_attribute("uv", uv);
+            self.mesh.set_attribute("color", color);
+            self.mesh.set_indices(indices);
+            */
 
-            pass.draw_mesh(&mesh);
+            //pass.draw_mesh(&self.mesh);
         }
     }
 }

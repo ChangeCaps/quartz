@@ -4,6 +4,7 @@ use crate::plugin::*;
 use crate::scene::*;
 use crate::transform::*;
 use crate::tree::*;
+use super::Reflect;
 use linked_hash_map::LinkedHashMap;
 use serde::{
     de::{self, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor},
@@ -123,12 +124,15 @@ impl<'a, 'de> DeserializeSeed<'de> for SceneDeserializer<'a> {
                 seq.next_element_seed(TreeDeserializer {
                     plugins: self.plugins,
                     components: self.components,
-                })?.unwrap();
+                })?
+                .unwrap();
 
-                Ok(seq.next_element_seed(TreeDeserializer {
-                    plugins: self.plugins,
-                    components: self.components,
-                })?.unwrap())
+                Ok(seq
+                    .next_element_seed(TreeDeserializer {
+                        plugins: self.plugins,
+                        components: self.components,
+                    })?
+                    .unwrap())
             }
 
             fn visit_map<V: MapAccess<'de>>(self, mut map: V) -> Result<Tree, V::Error> {
@@ -143,7 +147,7 @@ impl<'a, 'de> DeserializeSeed<'de> for SceneDeserializer<'a> {
                             }
 
                             plugins = Some(map.next_value_seed(PluginsDeserializer {
-                                plugins: self.plugins
+                                plugins: self.plugins,
                             })?);
                         }
                         Field::Tree => {
@@ -151,12 +155,10 @@ impl<'a, 'de> DeserializeSeed<'de> for SceneDeserializer<'a> {
                                 return Err(de::Error::duplicate_field("tree"));
                             }
 
-                            tree = Some(map.next_value_seed(
-                                TreeDeserializer {
-                                    plugins: self.plugins,
-                                    components: self.components,
-                                }
-                            )?);
+                            tree = Some(map.next_value_seed(TreeDeserializer {
+                                plugins: self.plugins,
+                                components: self.components,
+                            })?);
                         }
                     }
                 }
@@ -203,11 +205,11 @@ impl<'a, 'de> DeserializeSeed<'de> for PluginsDeserializer<'a> {
 
             fn visit_map<V: MapAccess<'de>>(self, mut map: V) -> Result<Self::Value, V::Error> {
                 while let Some(key) = map.next_key()? {
-                    self.plugins.get_mut_dyn(key, |plugin| {
-                        map.next_value_seed(PluginDeserializer {
-                            plugin,
+                    self.plugins
+                        .get_mut_dyn(key, |plugin| {
+                            map.next_value_seed(PluginDeserializer { plugin })
                         })
-                    }).unwrap()?;
+                        .unwrap()?;
                 }
 
                 Ok(())
@@ -228,7 +230,8 @@ impl<'a, 'de> DeserializeSeed<'de> for PluginDeserializer<'a> {
     type Value = ();
 
     fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
-        self.plugin.reflect(&mut <dyn erased_serde::Deserializer>::erase(deserializer));
+        self.plugin
+            .reflect(&mut <dyn erased_serde::Deserializer>::erase(deserializer));
         Ok(())
     }
 }
@@ -292,6 +295,7 @@ impl<'a, 'de> DeserializeSeed<'de> for TreeDeserializer<'a> {
                         .ok_or(de::Error::invalid_length(3, &self))?,
                     next_node_id,
                     despawn: Vec::new(),
+                    added: Vec::new(),
                 })
             }
 
@@ -355,6 +359,7 @@ impl<'a, 'de> DeserializeSeed<'de> for TreeDeserializer<'a> {
                     base,
                     next_node_id,
                     despawn: Vec::new(),
+                    added: Vec::new(),
                 })
             }
         }
@@ -625,5 +630,22 @@ impl<'a, 'de> DeserializeSeed<'de> for ComponentDeserializer<'a> {
         component.reflect(&mut <dyn erased_serde::Deserializer>::erase(deserializer));
 
         Ok(component)
+    }
+}
+
+pub struct ReflectDeserializer<'a> {
+    pub reflect: &'a mut dyn Reflect,
+}
+
+impl<'a, 'de> DeserializeSeed<'de> for ReflectDeserializer<'a> {
+    type Value = ();
+
+    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        self.reflect.reflect(&mut <dyn erased_serde::Deserializer>::erase(deserializer));
+
+        Ok(())
     }
 }

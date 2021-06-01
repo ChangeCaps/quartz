@@ -60,7 +60,7 @@ pub(crate) enum Command {
         pipeline: Arc<wgpu::RenderPipeline>,
     },
     SetBindings {
-        bind_groups: Vec<Arc<wgpu::BindGroup>>,
+        bind_groups: Vec<wgpu::BindGroup>,
     },
     SetBindGroup {
         set: u32,
@@ -103,7 +103,7 @@ impl<'a, 'b, 'c, C: TextureFormat, D: TextureFormat> RenderPass<'a, 'b, 'c, C, D
         self
     }
 
-    pub fn set_bindings(&mut self, mut bindings: Bindings) -> &mut Self {
+    pub fn set_bindings(&mut self, bindings: &mut Bindings) -> &mut Self {
         let bind_groups = bindings.generate_groups(self.pipeline, self.ctx.instance);
 
         self.commands.push(Command::SetBindings { bind_groups });
@@ -112,9 +112,7 @@ impl<'a, 'b, 'c, C: TextureFormat, D: TextureFormat> RenderPass<'a, 'b, 'c, C, D
     }
 
     pub fn set_pipeline_bindings(&mut self) -> &mut Self {
-        let bindings = self.pipeline.bindings.lock().unwrap().clone();
-
-        self.set_bindings(bindings);
+        self.set_bindings(&mut self.pipeline.bindings.lock().unwrap());
 
         self
     }
@@ -142,7 +140,7 @@ impl<'a, 'b, 'c, C: TextureFormat, D: TextureFormat> RenderPass<'a, 'b, 'c, C, D
     }
 
     pub fn draw_mesh(&mut self, mesh: &Mesh) -> &mut Self {
-        self.set_bindings(self.pipeline.bindings.lock().unwrap().clone());
+        self.set_pipeline_bindings();
 
         if mesh.index_buffer.lock().unwrap().is_none() {
             mesh.create_index_buffer(self.ctx.instance);
@@ -258,8 +256,6 @@ pub(crate) fn execute_commands<C: TextureFormat, D: TextureFormat>(
             }
         }
     }
-
-    drop(render_pass);
 }
 
 impl<C: TextureFormat, D: TextureFormat> Drop for RenderPass<'_, '_, '_, C, D> {

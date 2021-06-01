@@ -1,4 +1,5 @@
 pub(crate) mod serde;
+pub use self::serde::ReflectDeserializer;
 pub use quartz_engine_derive::Reflect;
 
 pub trait Reflect: erased_serde::Serialize {

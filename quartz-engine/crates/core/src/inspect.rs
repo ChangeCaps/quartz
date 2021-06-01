@@ -1,8 +1,10 @@
 use crate::transform::*;
 use egui::*;
+use std::collections::HashMap;
 pub use quartz_engine_derive::Inspect;
 use quartz_render::prelude::{Vec2, *};
 use quartz_render::wgpu;
+use crate::node::*;
 
 pub trait Inspect {
     fn inspect(&mut self, ui: &mut Ui) -> bool;
@@ -112,6 +114,54 @@ impl Inspect for Vec4 {
     }
 }
 
+impl Inspect for IVec2 {
+    fn inspect(&mut self, ui: &mut Ui) -> bool {
+        let prev = self.clone();
+
+        ui.columns(2, |columns| {
+            columns[0].add(DragValue::new(&mut self.x).speed(0.1));
+            columns[1].add(DragValue::new(&mut self.y).speed(0.1));
+        });
+
+        *self == prev
+    }
+}
+
+impl Inspect for IVec3 {
+    fn inspect(&mut self, ui: &mut Ui) -> bool {
+        let prev = self.clone();
+
+        ui.columns(3, |columns| {
+            columns[0].add(DragValue::new(&mut self.x).speed(0.1));
+            columns[1].add(DragValue::new(&mut self.y).speed(0.1));
+            columns[2].add(DragValue::new(&mut self.z).speed(0.1));
+        });
+
+        *self == prev
+    }
+}
+
+impl Inspect for IVec4 {
+    fn inspect(&mut self, ui: &mut Ui) -> bool {
+        let prev = self.clone();
+
+        ui.columns(4, |columns| {
+            columns[0].add(DragValue::new(&mut self.x).speed(0.1));
+            columns[1].add(DragValue::new(&mut self.y).speed(0.1));
+            columns[2].add(DragValue::new(&mut self.z).speed(0.1));
+            columns[3].add(DragValue::new(&mut self.w).speed(0.1));
+        });
+
+        *self == prev
+    }
+}
+
+impl Inspect for NodeId {
+    fn inspect(&mut self, ui: &mut Ui) -> bool {
+        ui.add(DragValue::new(&mut self.0).speed(0.1)).changed()
+    }
+}
+
 impl Inspect for Color {
     fn inspect(&mut self, ui: &mut Ui) -> bool {
         let prev = self.clone();
@@ -192,6 +242,22 @@ impl Inspect for Transform {
 
             mutated |= self.scale.inspect(ui);
         });
+
+        mutated
+    }
+}
+
+impl<K: Inspect + Clone, V: Inspect> Inspect for HashMap<K, V> {
+    fn inspect(&mut self, ui: &mut Ui) -> bool {
+        let mut mutated = false;
+
+        for (k, v) in self.iter_mut() {
+            ui.vertical(|ui| {
+                let mut k = k.clone();
+                k.inspect(ui);
+                mutated |= v.inspect(ui);
+            });
+        }
 
         mutated
     }

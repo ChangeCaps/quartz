@@ -3,9 +3,9 @@ Scene(
         "quartz_engine_builtins::render3d::Render3dPlugin": Render3dPlugin(
             ambient_light: AmbientLight(
                 color: Color(
-                    r: 0.33045554,
-                    g: 0.45328495,
-                    b: 0.6877774,
+                    r: 0.44895494,
+                    g: 0.71843725,
+                    b: 0.7463147,
                     a: 1,
                 ),
                 intensity: 0.3,
@@ -23,21 +23,44 @@ Scene(
                 ),
                 component: {
                     "testproject::Terrain": Terrain(
-                        size: 500,
-                        scale: 0.2,
-                        height: 1,
-                        detail: 2,
-                        mountain_scale: 2,
-                        mountain_height: 26.8,
-                        mountain_detail: 5,
+                        span: 1,
+                        chunks: {
+                            IVec2(0, 0): NodeId(1827),
+                            IVec2(0, -1): NodeId(1826),
+                            IVec2(1, -1): NodeId(1829),
+                            IVec2(1, 0): NodeId(1830),
+                            IVec2(-1, 1): NodeId(1825),
+                            IVec2(-1, 0): NodeId(1824),
+                            IVec2(0, 1): NodeId(1828),
+                            IVec2(-1, -1): NodeId(1823),
+                            IVec2(1, 1): NodeId(1831),
+                        },
+                        size: 50,
+                        lods: [
+                            1,
+                            2,
+                            3,
+                            5,
+                            7,
+                            10,
+                        ],
+                        dist_lod: 50,
+                        resolution: 400,
+                        settings: TerrainSettings(
+                            scale: 0.15,
+                            height: 5,
+                            detail: 4,
+                            mountain_scale: 1,
+                            mountain_height: 70.1,
+                            mountain_detail: 7,
+                        ),
                     ),
-                    "quartz_engine_builtins::render3d::ProceduralMesh3d": ProceduralMesh3d,
                 },
             ),
-            NodeId(1): Node(
+            NodeId(59): Node(
                 name: "Sun",
                 transform: Transform(
-                    translation: Vec3(0, 50, -76),
+                    translation: Vec3(0, 0, 0),
                     rotation: Quat(0, 0, 0, 1),
                     scale: Vec3(1, 1, 1),
                 ),
@@ -45,9 +68,9 @@ Scene(
                     "quartz_engine_builtins::render3d::DirectionalLight3d": DirectionalLight3d(
                         index: 0,
                         color: Color(
-                            r: 0.70940226,
-                            g: 0.5607153,
-                            b: 0.4295209,
+                            r: 0.8234391,
+                            g: 0.67535174,
+                            b: 0.55646473,
                             a: 1,
                         ),
                         direction: Vec3(1, -1, 2),
@@ -56,16 +79,242 @@ Scene(
                     ),
                 },
             ),
+            NodeId(1823): Node(
+                name: "Chunk",
+                transform: Transform(
+                    translation: Vec3(-50, 0, -50),
+                    rotation: Quat(0, 0, 0, 1),
+                    scale: Vec3(1, 1, 1),
+                ),
+                component: {
+                    "testproject::TerrainChunk": TerrainChunk(
+                        size: 50,
+                        resolution: 200,
+                        settings: TerrainSettings(
+                            scale: 0.15,
+                            height: 5,
+                            detail: 4,
+                            mountain_scale: 1,
+                            mountain_height: 70.1,
+                            mountain_detail: 7,
+                        ),
+                    ),
+                },
+            ),
+            NodeId(1824): Node(
+                name: "Chunk",
+                transform: Transform(
+                    translation: Vec3(-50, 0, 0),
+                    rotation: Quat(0, 0, 0, 1),
+                    scale: Vec3(1, 1, 1),
+                ),
+                component: {
+                    "testproject::TerrainChunk": TerrainChunk(
+                        size: 50,
+                        resolution: 200,
+                        settings: TerrainSettings(
+                            scale: 0.15,
+                            height: 5,
+                            detail: 4,
+                            mountain_scale: 1,
+                            mountain_height: 70.1,
+                            mountain_detail: 7,
+                        ),
+                    ),
+                },
+            ),
+            NodeId(1825): Node(
+                name: "Chunk",
+                transform: Transform(
+                    translation: Vec3(-50, 0, 50),
+                    rotation: Quat(0, 0, 0, 1),
+                    scale: Vec3(1, 1, 1),
+                ),
+                component: {
+                    "testproject::TerrainChunk": TerrainChunk(
+                        size: 50,
+                        resolution: 200,
+                        settings: TerrainSettings(
+                            scale: 0.15,
+                            height: 5,
+                            detail: 4,
+                            mountain_scale: 1,
+                            mountain_height: 70.1,
+                            mountain_detail: 7,
+                        ),
+                    ),
+                },
+            ),
+            NodeId(1826): Node(
+                name: "Chunk",
+                transform: Transform(
+                    translation: Vec3(0, 0, -50),
+                    rotation: Quat(0, 0, 0, 1),
+                    scale: Vec3(1, 1, 1),
+                ),
+                component: {
+                    "testproject::TerrainChunk": TerrainChunk(
+                        size: 50,
+                        resolution: 200,
+                        settings: TerrainSettings(
+                            scale: 0.15,
+                            height: 5,
+                            detail: 4,
+                            mountain_scale: 1,
+                            mountain_height: 70.1,
+                            mountain_detail: 7,
+                        ),
+                    ),
+                },
+            ),
+            NodeId(1827): Node(
+                name: "Chunk",
+                transform: Transform(
+                    translation: Vec3(0, 0, 0),
+                    rotation: Quat(0, 0, 0, 1),
+                    scale: Vec3(1, 1, 1),
+                ),
+                component: {
+                    "testproject::TerrainChunk": TerrainChunk(
+                        size: 50,
+                        resolution: 400,
+                        settings: TerrainSettings(
+                            scale: 0.15,
+                            height: 5,
+                            detail: 4,
+                            mountain_scale: 1,
+                            mountain_height: 70.1,
+                            mountain_detail: 7,
+                        ),
+                    ),
+                },
+            ),
+            NodeId(1828): Node(
+                name: "Chunk",
+                transform: Transform(
+                    translation: Vec3(0, 0, 50),
+                    rotation: Quat(0, 0, 0, 1),
+                    scale: Vec3(1, 1, 1),
+                ),
+                component: {
+                    "testproject::TerrainChunk": TerrainChunk(
+                        size: 50,
+                        resolution: 200,
+                        settings: TerrainSettings(
+                            scale: 0.15,
+                            height: 5,
+                            detail: 4,
+                            mountain_scale: 1,
+                            mountain_height: 70.1,
+                            mountain_detail: 7,
+                        ),
+                    ),
+                },
+            ),
+            NodeId(1829): Node(
+                name: "Chunk",
+                transform: Transform(
+                    translation: Vec3(50, 0, -50),
+                    rotation: Quat(0, 0, 0, 1),
+                    scale: Vec3(1, 1, 1),
+                ),
+                component: {
+                    "testproject::TerrainChunk": TerrainChunk(
+                        size: 50,
+                        resolution: 200,
+                        settings: TerrainSettings(
+                            scale: 0.15,
+                            height: 5,
+                            detail: 4,
+                            mountain_scale: 1,
+                            mountain_height: 70.1,
+                            mountain_detail: 7,
+                        ),
+                    ),
+                },
+            ),
+            NodeId(1830): Node(
+                name: "Chunk",
+                transform: Transform(
+                    translation: Vec3(50, 0, 0),
+                    rotation: Quat(0, 0, 0, 1),
+                    scale: Vec3(1, 1, 1),
+                ),
+                component: {
+                    "testproject::TerrainChunk": TerrainChunk(
+                        size: 50,
+                        resolution: 200,
+                        settings: TerrainSettings(
+                            scale: 0.15,
+                            height: 5,
+                            detail: 4,
+                            mountain_scale: 1,
+                            mountain_height: 70.1,
+                            mountain_detail: 7,
+                        ),
+                    ),
+                },
+            ),
+            NodeId(1831): Node(
+                name: "Chunk",
+                transform: Transform(
+                    translation: Vec3(50, 0, 50),
+                    rotation: Quat(0, 0, 0, 1),
+                    scale: Vec3(1, 1, 1),
+                ),
+                component: {
+                    "testproject::TerrainChunk": TerrainChunk(
+                        size: 50,
+                        resolution: 200,
+                        settings: TerrainSettings(
+                            scale: 0.15,
+                            height: 5,
+                            detail: 4,
+                            mountain_scale: 1,
+                            mountain_height: 70.1,
+                            mountain_detail: 7,
+                        ),
+                    ),
+                },
+            ),
         },
         children: {
-            NodeId(0): [],
-            NodeId(1): [],
+            NodeId(1826): [],
+            NodeId(1831): [],
+            NodeId(59): [],
+            NodeId(0): [
+                NodeId(1823),
+                NodeId(1824),
+                NodeId(1825),
+                NodeId(1826),
+                NodeId(1827),
+                NodeId(1828),
+                NodeId(1829),
+                NodeId(1830),
+                NodeId(1831),
+            ],
+            NodeId(1825): [],
+            NodeId(1830): [],
+            NodeId(1824): [],
+            NodeId(1827): [],
+            NodeId(1828): [],
+            NodeId(1829): [],
+            NodeId(1823): [],
         },
-        parents: {},
+        parents: {
+            NodeId(1828): NodeId(0),
+            NodeId(1831): NodeId(0),
+            NodeId(1825): NodeId(0),
+            NodeId(1830): NodeId(0),
+            NodeId(1829): NodeId(0),
+            NodeId(1823): NodeId(0),
+            NodeId(1826): NodeId(0),
+            NodeId(1827): NodeId(0),
+            NodeId(1824): NodeId(0),
+        },
         base: [
+            NodeId(59),
             NodeId(0),
-            NodeId(1),
-            NodeId(2),
         ],
     ),
 )
