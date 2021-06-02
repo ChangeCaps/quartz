@@ -133,11 +133,11 @@ where
             } => {
                 let new_data = self.data();
 
-                if aligned_size(T::size(), 16) != data.len() as u64 {
+                if new_data.len() > data.len() {
                     return Err(());
                 }
 
-                *data = new_data;
+                data[..new_data.len()].copy_from_slice(&new_data);
                 *data_changed = true;
 
                 Ok(false)

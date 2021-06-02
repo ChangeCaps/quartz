@@ -493,16 +493,15 @@ impl<C: TextureFormat, D: TextureFormat> RenderPipeline<C, D> {
                     .collect::<Vec<_>>();
 
                 if entries.len() > 0 {
-                    let layout =
-                    instance
-                    .device
-                    .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                        label: Some("Bind Group Layout"),
-                        entries: &entries,
-                    });
-                    
+                    let layout = instance.device.create_bind_group_layout(
+                        &wgpu::BindGroupLayoutDescriptor {
+                            label: Some("Bind Group Layout"),
+                            entries: &entries,
+                        },
+                    );
+
                     bind_group.layout = Some(Arc::new(layout));
-                    
+
                     Some(&**bind_group.layout.as_ref().unwrap())
                 } else {
                     None
