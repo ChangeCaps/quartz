@@ -1,5 +1,5 @@
 use crate::prelude::*;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 pub use wgpu::{LoadOp, Operations};
 
 pub struct ColorAttachment<'a, F: TextureFormat> {
@@ -60,7 +60,7 @@ pub(crate) enum Command {
         pipeline: Arc<wgpu::RenderPipeline>,
     },
     SetBindings {
-        bind_groups: Vec<Arc<wgpu::BindGroup>>,
+        bindings: Arc<Mutex<Bindings>>,
     },
     SetBindGroup {
         set: u32,
@@ -103,21 +103,14 @@ impl<'a, 'b, 'c, C: TextureFormat, D: TextureFormat> RenderPass<'a, 'b, 'c, C, D
         self
     }
 
-    pub fn set_bindings(&mut self, bindings: &mut Bindings) -> &mut Self {
-        let bind_groups = bindings
-            .generate_groups(&self.pipeline.shader_layout, self.ctx.instance)
-            .clone();
-
-        for (set, bind_group) in bind_groups {
-            self.commands
-                .push(Command::SetBindGroup { set, bind_group });
-        }
+    pub fn set_bindings(&mut self, bindings: Arc<Mutex<Bindings>>) -> &mut Self {
+        self.commands.push(Command::SetBindings { bindings });
 
         self
     }
 
     pub fn set_pipeline_bindings(&mut self) -> &mut Self {
-        self.set_bindings(&mut self.pipeline.bindings.lock().unwrap());
+        self.set_bindings(self.pipeline.bindings.clone());
 
         self
     }
@@ -151,9 +144,19 @@ impl<'a, 'b, 'c, C: TextureFormat, D: TextureFormat> RenderPass<'a, 'b, 'c, C, D
             mesh.create_index_buffer(self.ctx.instance);
         }
 
-        mesh.create_vertex_buffers(&self.pipeline.shader_layout, self.ctx.instance);
+        mesh.create_vertex_buffers(
+            &self.pipeline.bindings.lock().unwrap().layout,
+            self.ctx.instance,
+        );
 
-        for (name, attribute) in &self.pipeline.shader_layout.vertex_attributes {
+        for (name, attribute) in &self
+            .pipeline
+            .bindings
+            .lock()
+            .unwrap()
+            .layout
+            .vertex_attributes
+        {
             let data = mesh.vertex_data.get(name).unwrap();
 
             if data.format == attribute.format {
@@ -225,6 +228,20 @@ pub(crate) fn execute_commands<C: TextureFormat, D: TextureFormat>(
             }),
     };
 
+    
+    let mut bindings = Vec::new();
+    
+    for command in commands {
+        match command {
+            Command::SetBindings { bindings: b } => {
+                bindings.push(b.lock().unwrap());
+            }
+            _ => {}
+        }
+    }
+    
+    let mut bindings_iter = bindings.iter_mut();
+
     let mut render_pass = ctx.encoder.as_mut().unwrap().begin_render_pass(&descriptor);
 
     for command in commands {
@@ -232,9 +249,12 @@ pub(crate) fn execute_commands<C: TextureFormat, D: TextureFormat>(
             Command::SetPipeline { pipeline } => {
                 render_pass.set_pipeline(&pipeline);
             }
-            Command::SetBindings { bind_groups } => {
-                for (set, bind_group) in bind_groups.iter().enumerate() {
-                    render_pass.set_bind_group(set as u32, &bind_group, &[]);
+            Command::SetBindings { .. } => {
+                let bindings = bindings_iter.next().unwrap();
+                bindings.generate_groups(ctx.instance);
+
+                for (set, bind_group) in bindings.bind_groups.iter() {
+                    render_pass.set_bind_group(*set as u32, bind_group, &[]);
                 }
             }
             Command::SetBindGroup { set, bind_group } => {
@@ -261,6 +281,9 @@ pub(crate) fn execute_commands<C: TextureFormat, D: TextureFormat>(
             }
         }
     }
+
+    drop(render_pass);
+    drop(bindings);
 }
 
 impl<C: TextureFormat, D: TextureFormat> Drop for RenderPass<'_, '_, '_, C, D> {
@@ -307,22 +330,14 @@ impl<'rp, C: TextureFormat, D: TextureFormat> PipelineRenderPass<'_, 'rp, '_, '_
         self
     }
 
-    pub fn set_bindings(&mut self, bindings: &mut Bindings) -> &mut Self {
-        let bind_groups = bindings
-            .generate_groups(&self.pipeline.shader_layout, self.pass.ctx.instance)
-            .clone();
-
-        for (set, bind_group) in bind_groups {
-            self.pass
-                .commands
-                .push(Command::SetBindGroup { set, bind_group });
-        }
+    pub(crate) fn set_bindings(&mut self, bindings: Arc<Mutex<Bindings>>) -> &mut Self {
+        self.pass.commands.push(Command::SetBindings { bindings });
 
         self
     }
 
-    pub fn set_pipeline_bindings(&mut self) -> &mut Self {
-        self.set_bindings(&mut self.pipeline.bindings.lock().unwrap());
+    pub(crate) fn set_pipeline_bindings(&mut self) -> &mut Self {
+        self.set_bindings(self.pipeline.bindings.clone());
 
         self
     }
@@ -356,9 +371,19 @@ impl<'rp, C: TextureFormat, D: TextureFormat> PipelineRenderPass<'_, 'rp, '_, '_
             mesh.create_index_buffer(self.pass.ctx.instance);
         }
 
-        mesh.create_vertex_buffers(&self.pipeline.shader_layout, self.pass.ctx.instance);
+        mesh.create_vertex_buffers(
+            &self.pipeline.bindings.lock().unwrap().layout,
+            self.pass.ctx.instance,
+        );
 
-        for (name, attribute) in &self.pipeline.shader_layout.vertex_attributes {
+        for (name, attribute) in &self
+            .pipeline
+            .bindings
+            .lock()
+            .unwrap()
+            .layout
+            .vertex_attributes
+        {
             let data = mesh.vertex_data.get(name).unwrap();
 
             if data.format == attribute.format {

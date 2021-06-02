@@ -21,7 +21,7 @@ pub struct Location {
 }
 
 /// The type of a binding in a shader.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BindingType {
     Texture {
         view_dimension: wgpu::TextureViewDimension,
@@ -39,7 +39,7 @@ pub trait Bindable {
 }
 
 /// Implemented for anything that can be bound
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Binding {
     Texture {
         view: Option<Arc<wgpu::TextureView>>,
@@ -49,7 +49,7 @@ pub enum Binding {
     },
     UniformBlock {
         data: Vec<u8>,
-        buffer: wgpu::Buffer,
+        buffer: Arc<wgpu::Buffer>,
         data_changed: bool,
     },
 }
@@ -76,7 +76,7 @@ impl Binding {
 
         Self::UniformBlock {
             data,
-            buffer,
+            buffer: Arc::new(buffer),
             data_changed: false,
         }
     }
@@ -111,12 +111,13 @@ impl Binding {
 
 #[derive(Debug)]
 pub struct Bindings {
-    bindings: HashMap<String, (Binding, bool)>,
-    bind_groups: HashMap<u32, Arc<wgpu::BindGroup>>,
+    pub(crate) bindings: HashMap<String, (Binding, bool)>,
+    pub(crate) layout: Arc<PipelineLayout>,
+    pub(crate) bind_groups: HashMap<u32, Arc<wgpu::BindGroup>>,
 }
 
 impl Bindings {
-    pub fn new(layout: &PipelineLayout, instance: &Instance) -> Self {
+    pub fn new(layout: PipelineLayout, instance: &Instance) -> Self {
         let mut bindings = HashMap::new();
 
         for bind_group in &layout.bind_groups {
@@ -136,7 +137,16 @@ impl Bindings {
 
         Self {
             bindings,
-            bind_groups: HashMap::new(),
+            layout: Arc::new(layout),
+            bind_groups: Default::default(),
+        }
+    }
+
+    pub fn clone_state(&self) -> Bindings {
+        Bindings {
+            bindings: self.bindings.clone(),
+            layout: self.layout.clone(),
+            bind_groups: self.bind_groups.clone(),
         }
     }
 
@@ -152,12 +162,11 @@ impl Bindings {
         self.bindings.len()
     }
 
-    pub fn generate_groups(
-        &mut self,
-        layout: &PipelineLayout,
-        instance: &Instance,
-    ) -> &HashMap<u32, Arc<wgpu::BindGroup>> {
-        layout
+    pub fn generate_groups(&mut self, instance: &Instance) {
+        let bindings = &mut self.bindings;
+        let bind_groups = &mut self.bind_groups;
+
+        self.layout
             .bind_groups
             .iter()
             .enumerate()
@@ -165,7 +174,7 @@ impl Bindings {
                 let mut recreate_bind_group = false;
 
                 for (_binding, entry) in bind_group.bindings.iter() {
-                    if let Some((binding, recreate)) = self.bindings.get_mut(&entry.ident) {
+                    if let Some((binding, recreate)) = bindings.get_mut(&entry.ident) {
                         recreate_bind_group |= *recreate;
                         binding.prepare(instance);
                         *recreate = false;
@@ -179,7 +188,7 @@ impl Bindings {
                         .bindings
                         .iter()
                         .map(|(_binding, entry)| {
-                            let (binding, _) = self.bindings.get(&entry.ident).unwrap();
+                            let (binding, _) = bindings.get(&entry.ident).unwrap();
 
                             wgpu::BindGroupEntry {
                                 binding: entry.binding,
@@ -197,16 +206,14 @@ impl Bindings {
                                 entries: &entries,
                             });
 
-                    self.bind_groups.insert(i as u32, Arc::new(bind_group));
+                    bind_groups.insert(i as u32, Arc::new(bind_group));
                 }
             });
-
-        &self.bind_groups
     }
 }
 
 /// Shader side descriptor set binding.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BindGroupEntry {
     pub ident: String,
     pub binding: u32,
@@ -214,7 +221,7 @@ pub struct BindGroupEntry {
 }
 
 /// Shader side descriptor set.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BindGroup {
     /// Entries.
     pub bindings: HashMap<u32, BindGroupEntry>,
@@ -232,7 +239,7 @@ impl BindGroup {
 }
 
 /// Shader side input descriptor.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct VertexAttributeLayout {
     /// Buffer offset.
     pub offset: u64,
@@ -243,7 +250,7 @@ pub struct VertexAttributeLayout {
 }
 
 /// Layout of the shader side of a [`RenderPipeline`].
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PipelineLayout {
     /// Bind groups.
     pub bind_groups: Vec<BindGroup>,
@@ -330,8 +337,7 @@ pub struct RenderPipeline<
     D: TextureFormat = format::Depth32Float,
 > {
     pub(crate) descriptor: PipelineDescriptor<C, D>,
-    pub(crate) shader_layout: PipelineLayout,
-    pub(crate) bindings: Mutex<Bindings>,
+    pub(crate) bindings: Arc<Mutex<Bindings>>,
     pub(crate) pipeline: Arc<wgpu::RenderPipeline>,
 }
 
@@ -570,18 +576,9 @@ impl<C: TextureFormat, D: TextureFormat> RenderPipeline<C, D> {
 
         Ok(Self {
             descriptor,
-            bindings: Mutex::new(Bindings::new(&layout, instance)),
-            shader_layout: layout,
+            bindings: Arc::new(Mutex::new(Bindings::new(layout, instance))),
             pipeline: Arc::new(pipeline),
         })
-    }
-
-    pub fn generate_groups(&self, instance: &Instance) -> HashMap<u32, Arc<wgpu::BindGroup>> {
-        self.bindings
-            .lock()
-            .unwrap()
-            .generate_groups(&self.shader_layout, instance)
-            .clone()
     }
 
     /// Sets entire [`Bindings`].
