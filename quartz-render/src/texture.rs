@@ -551,13 +551,29 @@ impl<'a, F: TextureFormat> TextureView<'a, F> {
     }
 }
 
-impl<F: TextureFormat> Binding for TextureView<'static, F> {
-    fn binding_resource(&self) -> wgpu::BindingResource {
-        wgpu::BindingResource::TextureView(self.view.view())
-    }
+impl<F: TextureFormat> Bindable for &TextureView<'static, F> {
+    fn bind(&self, binding: &mut Binding) -> Result<bool, ()> {
+        match binding {
+            Binding::Texture { view } => {
+                let new_view = match &self.view {
+                    ViewInner::Owned(view) => view.clone(),
+                    _ => unimplemented!(),
+                };
 
-    fn binding_clone(&self) -> Box<dyn Binding> {
-        Box::new(Clone::clone(self))
+                if let Some(view) = view {
+                    let recreate = !Arc::ptr_eq(view, &new_view);
+
+                    *view = new_view;
+
+                    Ok(recreate)
+                } else {
+                    *view = Some(new_view);
+
+                    Ok(true)
+                }
+            }
+            _ => Err(()),
+        }
     }
 }
 

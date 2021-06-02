@@ -60,7 +60,7 @@ pub(crate) enum Command {
         pipeline: Arc<wgpu::RenderPipeline>,
     },
     SetBindings {
-        bind_groups: Vec<wgpu::BindGroup>,
+        bind_groups: Vec<Arc<wgpu::BindGroup>>,
     },
     SetBindGroup {
         set: u32,
@@ -104,9 +104,14 @@ impl<'a, 'b, 'c, C: TextureFormat, D: TextureFormat> RenderPass<'a, 'b, 'c, C, D
     }
 
     pub fn set_bindings(&mut self, bindings: &mut Bindings) -> &mut Self {
-        let bind_groups = bindings.generate_groups(self.pipeline, self.ctx.instance);
+        let bind_groups = bindings
+            .generate_groups(&self.pipeline.shader_layout, self.ctx.instance)
+            .clone();
 
-        self.commands.push(Command::SetBindings { bind_groups });
+        for (set, bind_group) in bind_groups {
+            self.commands
+                .push(Command::SetBindGroup { set, bind_group });
+        }
 
         self
     }
@@ -302,20 +307,22 @@ impl<'rp, C: TextureFormat, D: TextureFormat> PipelineRenderPass<'_, 'rp, '_, '_
         self
     }
 
-    pub fn set_bindings(&mut self, mut bindings: Bindings) -> &mut Self {
-        let bind_groups = bindings.generate_groups(self.pipeline, self.pass.ctx.instance);
+    pub fn set_bindings(&mut self, bindings: &mut Bindings) -> &mut Self {
+        let bind_groups = bindings
+            .generate_groups(&self.pipeline.shader_layout, self.pass.ctx.instance)
+            .clone();
 
-        self.pass
-            .commands
-            .push(Command::SetBindings { bind_groups });
+        for (set, bind_group) in bind_groups {
+            self.pass
+                .commands
+                .push(Command::SetBindGroup { set, bind_group });
+        }
 
         self
     }
 
     pub fn set_pipeline_bindings(&mut self) -> &mut Self {
-        let bindings = self.pipeline.bindings.lock().unwrap().clone();
-
-        self.set_bindings(bindings);
+        self.set_bindings(&mut self.pipeline.bindings.lock().unwrap());
 
         self
     }
@@ -343,7 +350,7 @@ impl<'rp, C: TextureFormat, D: TextureFormat> PipelineRenderPass<'_, 'rp, '_, '_
     }
 
     pub fn draw_mesh(&mut self, mesh: &Mesh) -> &mut Self {
-        self.set_bindings(self.pipeline.bindings.lock().unwrap().clone());
+        self.set_pipeline_bindings();
 
         if mesh.index_buffer.lock().unwrap().is_none() {
             mesh.create_index_buffer(self.pass.ctx.instance);

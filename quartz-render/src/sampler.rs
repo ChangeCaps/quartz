@@ -45,12 +45,23 @@ impl Sampler {
     }
 }
 
-impl Binding for Sampler {
-    fn binding_resource(&self) -> wgpu::BindingResource {
-        wgpu::BindingResource::Sampler(&self.sampler)
-    }
+impl Bindable for &Sampler {
+    fn bind(&self, binding: &mut Binding) -> Result<bool, ()> {
+        match binding {
+            Binding::Sampler { sampler } => {
+                if let Some(sampler) = sampler {
+                    let recreate = !Arc::ptr_eq(sampler, &self.sampler);
 
-    fn binding_clone(&self) -> Box<dyn Binding> {
-        Box::new(Clone::clone(self))
+                    *sampler = self.sampler.clone();
+
+                    Ok(recreate)
+                } else {
+                    *sampler = Some(self.sampler.clone());
+
+                    Ok(true)
+                }
+            }
+            _ => Err(()),
+        }
     }
 }

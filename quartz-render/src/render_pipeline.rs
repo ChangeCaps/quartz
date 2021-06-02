@@ -10,8 +10,8 @@ use std::sync::{
 };
 
 use wgpu::{
-    BlendState, ColorWrite, CompareFunction, DepthBiasState, FrontFace, PolygonMode,
-    PrimitiveState, PrimitiveTopology, StencilState,
+    util::DeviceExt, BlendState, ColorWrite, CompareFunction, DepthBiasState, FrontFace,
+    PolygonMode, PrimitiveState, PrimitiveTopology, StencilState,
 };
 
 /// Descriptor binding location.
@@ -29,37 +29,88 @@ pub enum BindingType {
     },
     Sampler,
     Buffer,
-    UniformBuffer,
+    UniformBuffer {
+        size: u64,
+    },
+}
+
+pub trait Bindable {
+    fn bind(&self, binding: &mut Binding) -> Result<bool, ()>;
 }
 
 /// Implemented for anything that can be bound
-pub trait Binding: Any {
-    fn prepare_resource(&mut self, _instance: &Instance) {}
-    fn binding_resource(&self) -> wgpu::BindingResource;
-    fn type_id(&self) -> TypeId {
-        TypeId::of::<Self>()
-    }
-    fn binding_clone(&self) -> Box<dyn Binding>;
+pub enum Binding {
+    Texture {
+        view: Option<Arc<wgpu::TextureView>>,
+    },
+    Sampler {
+        sampler: Option<Arc<wgpu::Sampler>>,
+    },
+    UniformBlock {
+        data: Vec<u8>,
+        buffer: wgpu::Buffer,
+        data_changed: bool,
+    },
 }
 
-impl Clone for Box<dyn Binding> {
-    fn clone(&self) -> Self {
-        self.binding_clone()
+impl Binding {
+    pub fn texture() -> Self {
+        Self::Texture { view: None }
+    }
+
+    pub fn sampler() -> Self {
+        Self::Sampler { sampler: None }
+    }
+
+    pub fn uniform_block(size: u64, instance: &Instance) -> Self {
+        let data = vec![0; size as usize];
+
+        let buffer = instance
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Uniform Block Buffer"),
+                contents: &data,
+                usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+            });
+
+        Self::UniformBlock {
+            data,
+            buffer,
+            data_changed: false,
+        }
+    }
+
+    pub fn prepare(&mut self, instance: &Instance) {
+        match self {
+            Binding::UniformBlock {
+                data,
+                data_changed,
+                buffer,
+            } => {
+                if *data_changed {
+                    *data_changed = false;
+
+                    instance.queue.write_buffer(buffer, 0, data);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    pub fn binding_resource(&self) -> Option<wgpu::BindingResource> {
+        let binding_resource = match self {
+            Binding::Texture { view, .. } => wgpu::BindingResource::TextureView(view.as_ref()?),
+            Binding::Sampler { sampler, .. } => wgpu::BindingResource::Sampler(sampler.as_ref()?),
+            Binding::UniformBlock { buffer, .. } => buffer.as_entire_binding(),
+        };
+
+        Some(binding_resource)
     }
 }
 
-fn downcast_mut<T: Binding>(binding: &mut dyn Binding) -> Option<&mut T> {
-    if TypeId::of::<T>() == Binding::type_id(binding) {
-        // SAFETY: just checked that binding has the same type_id as T, which means casting is safe
-        Some(unsafe { &mut *(binding as *mut _ as *mut T) })
-    } else {
-        None
-    }
-}
-
-#[derive(Clone)]
 pub struct Bindings {
-    bindings: HashMap<String, Box<dyn Binding>>,
+    bindings: HashMap<String, (Binding, bool)>,
+    bind_groups: HashMap<u32, Arc<wgpu::BindGroup>>,
 }
 
 impl std::fmt::Debug for Bindings {
@@ -71,66 +122,92 @@ impl std::fmt::Debug for Bindings {
 }
 
 impl Bindings {
-    pub fn new() -> Self {
+    pub fn new(layout: &PipelineLayout, instance: &Instance) -> Self {
+        let mut bindings = HashMap::new();
+
+        for bind_group in &layout.bind_groups {
+            for (_binding, entry) in &bind_group.bindings {
+                let binding = match &entry.ty {
+                    BindingType::Sampler => Binding::sampler(),
+                    BindingType::Texture { .. } => Binding::texture(),
+                    BindingType::UniformBuffer { size, .. } => {
+                        Binding::uniform_block(*size, instance)
+                    }
+                    _ => unimplemented!(),
+                };
+
+                bindings.insert(entry.ident.clone(), (binding, false));
+            }
+        }
+
         Self {
-            bindings: HashMap::new(),
+            bindings,
+            bind_groups: HashMap::new(),
         }
     }
 
-    pub fn bind(&mut self, ident: impl Into<String>, binding: impl Binding + 'static) {
-        self.bindings.insert(ident.into(), Box::new(binding));
-    }
-
-    pub fn get(&self, ident: &String) -> Option<&Box<dyn Binding>> {
-        self.bindings.get(ident)
-    }
-
-    pub fn get_mut(&mut self, ident: &String) -> Option<&mut Box<dyn Binding>> {
-        self.bindings.get_mut(ident)
+    pub fn bind(&mut self, ident: impl Into<String>, bindable: impl Bindable) {
+        if let Some((binding, recreate)) = self.bindings.get_mut(&ident.into()) {
+            *recreate |= bindable.bind(binding).expect("Failed to bind binding");
+        } else {
+            panic!("Binding not present");
+        }
     }
 
     pub fn len(&self) -> usize {
         self.bindings.len()
     }
 
-    pub fn generate_groups<C: TextureFormat, D: TextureFormat>(
+    pub fn generate_groups(
         &mut self,
-        pipeline: &RenderPipeline<C, D>,
+        layout: &PipelineLayout,
         instance: &Instance,
-    ) -> Vec<wgpu::BindGroup> {
-        pipeline
-            .shader_layout
+    ) -> &HashMap<u32, Arc<wgpu::BindGroup>> {
+        layout
             .bind_groups
             .iter()
-            .map(|bind_group| {
+            .enumerate()
+            .for_each(|(i, bind_group)| {
+                let mut recreate_bind_group = false;
+
                 for (_binding, entry) in bind_group.bindings.iter() {
-                    self.get_mut(&entry.ident)
-                        .expect(format!("{} not bound", entry.ident).as_str())
-                        .prepare_resource(instance);
+                    if let Some((binding, recreate)) = self.bindings.get_mut(&entry.ident) {
+                        recreate_bind_group |= *recreate;
+                        binding.prepare(instance);
+                        *recreate = false;
+                    } else {
+                        unreachable!("Binding not bound");
+                    }
                 }
 
-                let entries = bind_group
-                    .bindings
-                    .iter()
-                    .map(|(_binding, entry)| {
-                        let binding = self.get(&entry.ident).unwrap();
+                if recreate_bind_group {
+                    let entries = bind_group
+                        .bindings
+                        .iter()
+                        .map(|(_binding, entry)| {
+                            let (binding, _) = self.bindings.get(&entry.ident).unwrap();
 
-                        wgpu::BindGroupEntry {
-                            binding: entry.binding,
-                            resource: binding.binding_resource(),
-                        }
-                    })
-                    .collect::<Vec<_>>();
+                            wgpu::BindGroupEntry {
+                                binding: entry.binding,
+                                resource: binding.binding_resource().expect("Binding unbound"),
+                            }
+                        })
+                        .collect::<Vec<_>>();
 
-                instance
-                    .device
-                    .create_bind_group(&wgpu::BindGroupDescriptor {
-                        label: Some("Bind Group"),
-                        layout: bind_group.layout.as_ref().unwrap(),
-                        entries: &entries,
-                    })
-            })
-            .collect::<Vec<_>>()
+                    let bind_group =
+                        instance
+                            .device
+                            .create_bind_group(&wgpu::BindGroupDescriptor {
+                                label: Some("Bind Group"),
+                                layout: bind_group.layout.as_ref().unwrap(),
+                                entries: &entries,
+                            });
+
+                    self.bind_groups.insert(i as u32, Arc::new(bind_group));
+                }
+            });
+
+        &self.bind_groups
     }
 }
 
@@ -260,13 +337,8 @@ pub struct RenderPipeline<
 > {
     pub(crate) descriptor: PipelineDescriptor<C, D>,
     pub(crate) shader_layout: PipelineLayout,
-    pub(crate) vs_module: wgpu::ShaderModule,
-    pub(crate) fs_module: wgpu::ShaderModule,
     pub(crate) bindings: Mutex<Bindings>,
-    pub(crate) bind_groups: Mutex<Vec<Arc<wgpu::BindGroup>>>,
-    pub(crate) layout: Option<wgpu::PipelineLayout>,
     pub(crate) pipeline: Arc<wgpu::RenderPipeline>,
-    pub(crate) bindings_changed: AtomicBool,
 }
 
 impl<C: TextureFormat, D: TextureFormat> RenderPipeline<C, D> {
@@ -302,7 +374,9 @@ impl<C: TextureFormat, D: TextureFormat> RenderPipeline<C, D> {
                 binding: binding.binding,
                 ty: match binding.descriptor_type {
                     ReflectDescriptorType::StorageBuffer => BindingType::Buffer,
-                    ReflectDescriptorType::UniformBuffer => BindingType::UniformBuffer,
+                    ReflectDescriptorType::UniformBuffer => BindingType::UniformBuffer {
+                        size: binding.block.size as u64,
+                    },
                     ReflectDescriptorType::SampledImage => BindingType::Texture {
                         view_dimension: match binding.image.dim {
                             ReflectDimension::Type1d => wgpu::TextureViewDimension::D1,
@@ -413,7 +487,7 @@ impl<C: TextureFormat, D: TextureFormat> RenderPipeline<C, D> {
                                 view_dimension,
                                 multisampled,
                             },
-                            BindingType::UniformBuffer => wgpu::BindingType::Buffer {
+                            BindingType::UniformBuffer { .. } => wgpu::BindingType::Buffer {
                                 ty: wgpu::BufferBindingType::Uniform,
                                 has_dynamic_offset: false,
                                 min_binding_size: None,
@@ -492,58 +566,40 @@ impl<C: TextureFormat, D: TextureFormat> RenderPipeline<C, D> {
                 },
             });
 
+        let layout = PipelineLayout {
+            bind_groups,
+            vertex_attributes,
+        };
+
         Ok(Self {
             descriptor,
-            shader_layout: PipelineLayout {
-                bind_groups,
-                vertex_attributes,
-            },
-            vs_module,
-            fs_module,
-            bindings: Mutex::new(Bindings::new()),
-            bind_groups: Mutex::new(Vec::new()),
-            layout: Some(layout),
+            bindings: Mutex::new(Bindings::new(&layout, instance)),
+            shader_layout: layout,
             pipeline: Arc::new(pipeline),
-            bindings_changed: AtomicBool::new(true),
         })
     }
 
-    pub fn generate_groups(&self, instance: &Instance) -> Vec<wgpu::BindGroup> {
+    pub fn generate_groups(&self, instance: &Instance) -> HashMap<u32, Arc<wgpu::BindGroup>> {
         self.bindings
             .lock()
             .unwrap()
-            .generate_groups(self, instance)
+            .generate_groups(&self.shader_layout, instance)
+            .clone()
     }
 
     /// Sets entire [`Bindings`].
     pub fn set_bindings(&self, bindings: Bindings) {
         *self.bindings.lock().unwrap() = bindings;
-        self.bindings_changed.store(true, Ordering::SeqCst);
     }
 
     /// Binds a binding.
-    pub fn bind(&self, ident: impl Into<String>, binding: impl Binding + 'static) {
-        self.bindings.lock().unwrap().bind(ident, binding);
-        self.bindings_changed.store(true, Ordering::SeqCst);
+    pub fn bind(&self, ident: impl Into<String>, bindable: impl Bindable) {
+        self.bindings.lock().unwrap().bind(ident, bindable);
     }
 
     /// Binds a uniform.
     pub fn bind_uniform(&self, ident: impl Into<String>, uniform: &impl Uniform) {
         let mut bindings = self.bindings.lock().unwrap();
         let ident = ident.into();
-
-        if let Some(binding) = bindings.get_mut(&ident) {
-            if let Some(uniform_buffer) = downcast_mut::<UniformBinding>(binding.as_mut()) {
-                uniform_buffer.set_uniform(uniform);
-
-                self.bindings_changed.store(true, Ordering::SeqCst);
-            } else {
-                drop(bindings);
-                self.bind(ident, UniformBinding::new(uniform));
-            }
-        } else {
-            drop(bindings);
-            self.bind(ident, UniformBinding::new(uniform));
-        }
     }
 }

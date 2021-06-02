@@ -122,70 +122,25 @@ impl<T: Uniform, const L: u32> Uniform for UniformBuffer<T, L> {
     }
 }
 
-#[derive(Clone)]
-pub struct UniformBinding {
-    pub data: Vec<u8>,
-    pub updated: bool,
-    pub(crate) buffer: Option<Arc<wgpu::Buffer>>,
-}
+impl<T: Uniform> Bindable for T {
+    fn bind(&self, binding: &mut Binding) -> Result<bool, ()> {
+        match binding {
+            Binding::UniformBlock {
+                data, data_changed, ..
+            } => {
+                let new_data = self.data();
 
-impl UniformBinding {
-    pub fn new<T: Uniform>(uniform: &T) -> Self {
-        Self {
-            data: uniform.data(),
-            updated: false,
-            buffer: None,
+                if new_data.len() != data.len() {
+                    return Err(());
+                }
+
+                *data = new_data;
+                *data_changed = true;
+
+                Ok(false)
+            }
+            _ => Err(()),
         }
-    }
-
-    pub fn set_uniform<T: Uniform>(&mut self, uniform: &T) {
-        self.data = uniform.data();
-
-        if T::size() == self.data.len() as u64 {
-            self.updated = true;
-        } else {
-            self.buffer = None;
-        }
-    }
-
-    pub fn create_buffer(&mut self, instance: &Instance) {
-        let buffer = instance
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Uniform Buffer"),
-                contents: &self.data,
-                usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
-            });
-
-        self.buffer = Some(Arc::new(buffer));
-    }
-}
-
-impl Binding for UniformBinding {
-    fn prepare_resource(&mut self, instance: &Instance) {
-        if self.buffer.is_none() {
-            self.create_buffer(instance);
-        }
-
-        if self.updated {
-            instance
-                .queue
-                .write_buffer(self.buffer.as_ref().unwrap(), 0, &self.data);
-
-            self.updated = false;
-        }
-    }
-
-    fn binding_resource(&self) -> wgpu::BindingResource {
-        self.buffer.as_ref().unwrap().as_entire_binding()
-    }
-
-    fn binding_clone(&self) -> Box<dyn Binding> {
-        Box::new(Self {
-            data: self.data.clone(),
-            updated: false,
-            buffer: None,
-        })
     }
 }
 
