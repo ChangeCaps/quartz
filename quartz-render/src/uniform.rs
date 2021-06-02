@@ -133,7 +133,7 @@ where
             } => {
                 let new_data = self.data();
 
-                if new_data.len() != data.len() {
+                if aligned_size(T::size(), 16) != data.len() as u64 {
                     return Err(());
                 }
 
