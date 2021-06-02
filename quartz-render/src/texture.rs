@@ -551,13 +551,13 @@ impl<'a, F: TextureFormat> TextureView<'a, F> {
     }
 }
 
-impl<F: TextureFormat> Bindable for &TextureView<'static, F> {
+impl<F: TextureFormat> Bindable for &TextureView<'_, F> {
     fn bind(&self, binding: &mut Binding) -> Result<bool, ()> {
         match binding {
             Binding::Texture { view } => {
                 let new_view = match &self.view {
                     ViewInner::Owned(view) => view.clone(),
-                    _ => unimplemented!(),
+                    _ => return Err(()),
                 };
 
                 if let Some(view) = view {

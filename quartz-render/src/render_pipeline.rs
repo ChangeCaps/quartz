@@ -598,6 +598,7 @@ impl<C: TextureFormat, D: TextureFormat> RenderPipeline<C, D> {
     }
 
     /// Binds a uniform.
+    #[deprecated(note = "Use bind instead")]
     pub fn bind_uniform(&self, ident: impl Into<String>, uniform: &impl Uniform) {
         self.bind(ident, uniform);
     }
