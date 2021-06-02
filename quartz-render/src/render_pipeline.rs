@@ -39,6 +39,7 @@ pub trait Bindable {
 }
 
 /// Implemented for anything that can be bound
+#[derive(Debug)]
 pub enum Binding {
     Texture {
         view: Option<Arc<wgpu::TextureView>>,
@@ -108,17 +109,10 @@ impl Binding {
     }
 }
 
+#[derive(Debug)]
 pub struct Bindings {
     bindings: HashMap<String, (Binding, bool)>,
     bind_groups: HashMap<u32, Arc<wgpu::BindGroup>>,
-}
-
-impl std::fmt::Debug for Bindings {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "Bindings")?;
-
-        Ok(())
-    }
 }
 
 impl Bindings {
@@ -136,7 +130,7 @@ impl Bindings {
                     _ => unimplemented!(),
                 };
 
-                bindings.insert(entry.ident.clone(), (binding, false));
+                bindings.insert(entry.ident.clone(), (binding, true));
             }
         }
 
@@ -467,7 +461,7 @@ impl<C: TextureFormat, D: TextureFormat> RenderPipeline<C, D> {
 
         let layouts = bind_groups
             .iter_mut()
-            .map(|bind_group| {
+            .filter_map(|bind_group| {
                 let entries = bind_group
                     .bindings
                     .iter()
@@ -498,17 +492,21 @@ impl<C: TextureFormat, D: TextureFormat> RenderPipeline<C, D> {
                     })
                     .collect::<Vec<_>>();
 
-                let layout =
+                if entries.len() > 0 {
+                    let layout =
                     instance
-                        .device
-                        .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                            label: Some("Bind Group Layout"),
-                            entries: &entries,
-                        });
-
-                bind_group.layout = Some(Arc::new(layout));
-
-                &**bind_group.layout.as_ref().unwrap()
+                    .device
+                    .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                        label: Some("Bind Group Layout"),
+                        entries: &entries,
+                    });
+                    
+                    bind_group.layout = Some(Arc::new(layout));
+                    
+                    Some(&**bind_group.layout.as_ref().unwrap())
+                } else {
+                    None
+                }
             })
             .collect::<Vec<_>>();
 
