@@ -146,7 +146,7 @@ impl Bindings {
         }
     }
 
-    pub fn bind(&mut self, ident: impl Into<String>, bindable: impl Bindable) {
+    pub fn bind(&mut self, ident: impl Into<String>, bindable: &impl Bindable) {
         if let Some((binding, recreate)) = self.bindings.get_mut(&ident.into()) {
             *recreate |= bindable.bind(binding).expect("Failed to bind binding");
         } else {
@@ -593,13 +593,12 @@ impl<C: TextureFormat, D: TextureFormat> RenderPipeline<C, D> {
     }
 
     /// Binds a binding.
-    pub fn bind(&self, ident: impl Into<String>, bindable: impl Bindable) {
+    pub fn bind(&self, ident: impl Into<String>, bindable: &impl Bindable) {
         self.bindings.lock().unwrap().bind(ident, bindable);
     }
 
     /// Binds a uniform.
     pub fn bind_uniform(&self, ident: impl Into<String>, uniform: &impl Uniform) {
-        let mut bindings = self.bindings.lock().unwrap();
-        let ident = ident.into();
+        self.bind(ident, uniform);
     }
 }
