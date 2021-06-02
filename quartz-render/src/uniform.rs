@@ -129,7 +129,7 @@ where
     fn bind(&self, binding: &mut Binding) -> Result<bool, ()> {
         match binding {
             Binding::UniformBlock {
-                data, data_changed, ..
+                data, ..
             } => {
                 let new_data = self.data();
 
@@ -138,7 +138,6 @@ where
                 }
 
                 data[..new_data.len()].copy_from_slice(&new_data);
-                *data_changed = true;
 
                 Ok(false)
             }

@@ -50,7 +50,6 @@ pub enum Binding {
     UniformBlock {
         data: Vec<u8>,
         buffer: Arc<wgpu::Buffer>,
-        data_changed: bool,
     },
 }
 
@@ -77,22 +76,16 @@ impl Binding {
         Self::UniformBlock {
             data,
             buffer: Arc::new(buffer),
-            data_changed: false,
         }
     }
 
-    pub fn prepare(&mut self, instance: &Instance) {
+    pub fn prepare(&self, instance: &Instance) {
         match self {
             Binding::UniformBlock {
                 data,
-                data_changed,
                 buffer,
             } => {
-                if *data_changed {
-                    *data_changed = false;
-
-                    instance.queue.write_buffer(buffer, 0, data);
-                }
+                instance.queue.write_buffer(buffer, 0, data);
             }
             _ => {}
         }
@@ -111,9 +104,9 @@ impl Binding {
 
 #[derive(Debug)]
 pub struct Bindings {
-    pub(crate) bindings: HashMap<String, (Binding, bool)>,
+    pub(crate) bindings: HashMap<String, (Binding, Arc<AtomicBool>)>,
     pub(crate) layout: Arc<PipelineLayout>,
-    pub(crate) bind_groups: HashMap<u32, Arc<wgpu::BindGroup>>,
+    pub(crate) bind_groups: Arc<Mutex<HashMap<u32, Arc<wgpu::BindGroup>>>>,
 }
 
 impl Bindings {
@@ -131,7 +124,7 @@ impl Bindings {
                     _ => unimplemented!(),
                 };
 
-                bindings.insert(entry.ident.clone(), (binding, true));
+                bindings.insert(entry.ident.clone(), (binding, Arc::new(AtomicBool::new(true))));
             }
         }
 
@@ -152,7 +145,7 @@ impl Bindings {
 
     pub fn bind(&mut self, ident: impl Into<String>, bindable: &impl Bindable) {
         if let Some((binding, recreate)) = self.bindings.get_mut(&ident.into()) {
-            *recreate |= bindable.bind(binding).expect("Failed to bind binding");
+            recreate.fetch_or(bindable.bind(binding).expect("Failed to bind binding"), Ordering::SeqCst);
         } else {
             panic!("Binding not present");
         }
@@ -162,9 +155,9 @@ impl Bindings {
         self.bindings.len()
     }
 
-    pub fn generate_groups(&mut self, instance: &Instance) {
-        let bindings = &mut self.bindings;
-        let bind_groups = &mut self.bind_groups;
+    pub fn generate_groups(&self, instance: &Instance) -> HashMap<u32, Arc<wgpu::BindGroup>> {
+        let bindings = &self.bindings;
+        let bind_groups = &self.bind_groups;
 
         self.layout
             .bind_groups
@@ -174,10 +167,9 @@ impl Bindings {
                 let mut recreate_bind_group = false;
 
                 for (_binding, entry) in bind_group.bindings.iter() {
-                    if let Some((binding, recreate)) = bindings.get_mut(&entry.ident) {
-                        recreate_bind_group |= *recreate;
+                    if let Some((binding, recreate)) = bindings.get(&entry.ident) {
+                        recreate_bind_group |= recreate.swap(false, Ordering::SeqCst);
                         binding.prepare(instance);
-                        *recreate = false;
                     } else {
                         unreachable!("Binding not bound");
                     }
@@ -206,9 +198,11 @@ impl Bindings {
                                 entries: &entries,
                             });
 
-                    bind_groups.insert(i as u32, Arc::new(bind_group));
+                    bind_groups.lock().unwrap().insert(i as u32, Arc::new(bind_group));
                 }
             });
+
+        self.bind_groups.lock().unwrap().clone()
     }
 }
 

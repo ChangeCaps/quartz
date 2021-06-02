@@ -60,7 +60,7 @@ pub(crate) enum Command {
         pipeline: Arc<wgpu::RenderPipeline>,
     },
     SetBindings {
-        bindings: Arc<Mutex<Bindings>>,
+        bindings: Bindings,
     },
     SetBindGroup {
         set: u32,
@@ -103,14 +103,14 @@ impl<'a, 'b, 'c, C: TextureFormat, D: TextureFormat> RenderPass<'a, 'b, 'c, C, D
         self
     }
 
-    pub fn set_bindings(&mut self, bindings: Arc<Mutex<Bindings>>) -> &mut Self {
+    pub fn set_bindings(&mut self, bindings: Bindings) -> &mut Self {
         self.commands.push(Command::SetBindings { bindings });
 
         self
     }
 
     pub fn set_pipeline_bindings(&mut self) -> &mut Self {
-        self.set_bindings(self.pipeline.bindings.clone());
+        self.set_bindings(self.pipeline.bindings.lock().unwrap().clone_state());
 
         self
     }
@@ -228,19 +228,18 @@ pub(crate) fn execute_commands<C: TextureFormat, D: TextureFormat>(
             }),
     };
 
-    
     let mut bindings = Vec::new();
-    
+
     for command in commands {
         match command {
             Command::SetBindings { bindings: b } => {
-                bindings.push(b.lock().unwrap());
+                bindings.push((b, None));
             }
             _ => {}
         }
     }
-    
-    let mut bindings_iter = bindings.iter_mut();
+
+    let mut bindings = bindings.iter_mut();
 
     let mut render_pass = ctx.encoder.as_mut().unwrap().begin_render_pass(&descriptor);
 
@@ -250,10 +249,13 @@ pub(crate) fn execute_commands<C: TextureFormat, D: TextureFormat>(
                 render_pass.set_pipeline(&pipeline);
             }
             Command::SetBindings { .. } => {
-                let bindings = bindings_iter.next().unwrap();
-                bindings.generate_groups(ctx.instance);
+                let (bindings, groups) = bindings.next().unwrap();
 
-                for (set, bind_group) in bindings.bind_groups.iter() {
+                let bind_groups = bindings.generate_groups(ctx.instance);
+
+                *groups = Some(bind_groups);
+
+                for (set, bind_group) in groups.as_ref().unwrap() {
                     render_pass.set_bind_group(*set as u32, bind_group, &[]);
                 }
             }
@@ -281,9 +283,6 @@ pub(crate) fn execute_commands<C: TextureFormat, D: TextureFormat>(
             }
         }
     }
-
-    drop(render_pass);
-    drop(bindings);
 }
 
 impl<C: TextureFormat, D: TextureFormat> Drop for RenderPass<'_, '_, '_, C, D> {
@@ -330,14 +329,14 @@ impl<'rp, C: TextureFormat, D: TextureFormat> PipelineRenderPass<'_, 'rp, '_, '_
         self
     }
 
-    pub(crate) fn set_bindings(&mut self, bindings: Arc<Mutex<Bindings>>) -> &mut Self {
+    pub(crate) fn set_bindings(&mut self, bindings: Bindings) -> &mut Self {
         self.pass.commands.push(Command::SetBindings { bindings });
 
         self
     }
 
     pub(crate) fn set_pipeline_bindings(&mut self) -> &mut Self {
-        self.set_bindings(self.pipeline.bindings.clone());
+        self.set_bindings(self.pipeline.bindings.lock().unwrap().clone_state());
 
         self
     }
