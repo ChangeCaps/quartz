@@ -122,8 +122,9 @@ impl<T: Uniform, const L: u32> Uniform for UniformBuffer<T, L> {
     }
 }
 
-impl<T> Bindable for T 
-where T: Uniform,
+impl<T> Bindable for T
+where
+    T: Uniform,
 {
     fn bind(&self, binding: &mut Binding) -> Result<bool, ()> {
         match binding {
