@@ -45,7 +45,7 @@ impl Sampler {
     }
 }
 
-impl Bindable for &Sampler {
+impl Bindable for Sampler {
     fn bind(&self, binding: &mut Binding) -> Result<bool, ()> {
         match binding {
             Binding::Sampler { sampler } => {

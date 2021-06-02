@@ -551,7 +551,7 @@ impl<'a, F: TextureFormat> TextureView<'a, F> {
     }
 }
 
-impl<F: TextureFormat> Bindable for &TextureView<'_, F> {
+impl<F: TextureFormat> Bindable for TextureView<'_, F> {
     fn bind(&self, binding: &mut Binding) -> Result<bool, ()> {
         match binding {
             Binding::Texture { view } => {
