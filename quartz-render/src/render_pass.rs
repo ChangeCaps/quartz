@@ -1,5 +1,6 @@
 use crate::prelude::*;
 use std::sync::{Arc, Mutex};
+use wgpu::BIND_BUFFER_ALIGNMENT;
 pub use wgpu::{LoadOp, Operations};
 
 pub struct ColorAttachment<'a, F: TextureFormat> {
@@ -59,9 +60,6 @@ pub(crate) enum Command {
     SetPipeline {
         pipeline: Arc<wgpu::RenderPipeline>,
     },
-    SetBindings {
-        bindings: Bindings,
-    },
     SetBindGroup {
         set: u32,
         bind_group: Arc<wgpu::BindGroup>,
@@ -103,14 +101,15 @@ impl<'a, 'b, 'c, C: TextureFormat, D: TextureFormat> RenderPass<'a, 'b, 'c, C, D
         self
     }
 
-    pub fn set_bindings(&mut self, bindings: Bindings) -> &mut Self {
-        self.commands.push(Command::SetBindings { bindings });
+    pub fn set_bindings(&mut self, bindings: &mut Bindings) -> &mut Self {
+        bindings.generate_groups(self.ctx.instance);
 
-        self
-    }
-
-    pub fn set_pipeline_bindings(&mut self) -> &mut Self {
-        self.set_bindings(self.pipeline.bindings.lock().unwrap().clone_state());
+        for (set, bind_group) in &bindings.bind_groups {
+            self.commands.push(Command::SetBindGroup {
+                set: (*set) as u32,
+                bind_group: bind_group.clone(),
+            });
+        }
 
         self
     }
@@ -127,8 +126,6 @@ impl<'a, 'b, 'c, C: TextureFormat, D: TextureFormat> RenderPass<'a, 'b, 'c, C, D
     }
 
     pub fn draw(&mut self, vertices: std::ops::Range<u32>) -> &mut Self {
-        self.set_pipeline_bindings();
-
         self.commands.push(Command::Draw {
             vertices,
             instances: 0..1,
@@ -138,25 +135,13 @@ impl<'a, 'b, 'c, C: TextureFormat, D: TextureFormat> RenderPass<'a, 'b, 'c, C, D
     }
 
     pub fn draw_mesh(&mut self, mesh: &Mesh) -> &mut Self {
-        self.set_pipeline_bindings();
-
         if mesh.index_buffer.lock().unwrap().is_none() {
             mesh.create_index_buffer(self.ctx.instance);
         }
 
-        mesh.create_vertex_buffers(
-            &self.pipeline.bindings.lock().unwrap().layout,
-            self.ctx.instance,
-        );
+        mesh.create_vertex_buffers(&self.pipeline.layout, self.ctx.instance);
 
-        for (name, attribute) in &self
-            .pipeline
-            .bindings
-            .lock()
-            .unwrap()
-            .layout
-            .vertex_attributes
-        {
+        for (name, attribute) in &self.pipeline.layout.vertex_attributes {
             let data = mesh.vertex_data.get(name).unwrap();
 
             if data.format == attribute.format {
@@ -228,36 +213,12 @@ pub(crate) fn execute_commands<C: TextureFormat, D: TextureFormat>(
             }),
     };
 
-    let mut bindings = Vec::new();
-
-    for command in commands {
-        match command {
-            Command::SetBindings { bindings: b } => {
-                bindings.push((b, None));
-            }
-            _ => {}
-        }
-    }
-
-    let mut bindings = bindings.iter_mut();
-
     let mut render_pass = ctx.encoder.as_mut().unwrap().begin_render_pass(&descriptor);
 
     for command in commands {
         match command {
             Command::SetPipeline { pipeline } => {
                 render_pass.set_pipeline(&pipeline);
-            }
-            Command::SetBindings { .. } => {
-                let (bindings, groups) = bindings.next().unwrap();
-
-                let bind_groups = bindings.generate_groups(ctx.instance);
-
-                *groups = Some(bind_groups);
-
-                for (set, bind_group) in groups.as_ref().unwrap() {
-                    render_pass.set_bind_group(*set as u32, bind_group, &[]);
-                }
             }
             Command::SetBindGroup { set, bind_group } => {
                 render_pass.set_bind_group(*set, &bind_group, &[]);
@@ -329,14 +290,15 @@ impl<'rp, C: TextureFormat, D: TextureFormat> PipelineRenderPass<'_, 'rp, '_, '_
         self
     }
 
-    pub(crate) fn set_bindings(&mut self, bindings: Bindings) -> &mut Self {
-        self.pass.commands.push(Command::SetBindings { bindings });
+    pub fn set_bindings(&mut self, bindings: &mut Bindings) -> &mut Self {
+        bindings.generate_groups(self.pass.ctx.instance);
 
-        self
-    }
-
-    pub(crate) fn set_pipeline_bindings(&mut self) -> &mut Self {
-        self.set_bindings(self.pipeline.bindings.lock().unwrap().clone_state());
+        for (set, bind_group) in &bindings.bind_groups {
+            self.pass.commands.push(Command::SetBindGroup {
+                set: (*set) as u32,
+                bind_group: bind_group.clone(),
+            });
+        }
 
         self
     }
@@ -353,8 +315,6 @@ impl<'rp, C: TextureFormat, D: TextureFormat> PipelineRenderPass<'_, 'rp, '_, '_
     }
 
     pub fn draw(&mut self, vertices: std::ops::Range<u32>) -> &mut Self {
-        self.set_pipeline_bindings();
-
         self.pass.commands.push(Command::Draw {
             vertices,
             instances: 0..1,
@@ -364,25 +324,13 @@ impl<'rp, C: TextureFormat, D: TextureFormat> PipelineRenderPass<'_, 'rp, '_, '_
     }
 
     pub fn draw_mesh(&mut self, mesh: &Mesh) -> &mut Self {
-        self.set_pipeline_bindings();
-
         if mesh.index_buffer.lock().unwrap().is_none() {
             mesh.create_index_buffer(self.pass.ctx.instance);
         }
 
-        mesh.create_vertex_buffers(
-            &self.pipeline.bindings.lock().unwrap().layout,
-            self.pass.ctx.instance,
-        );
+        mesh.create_vertex_buffers(&self.pipeline.layout, self.pass.ctx.instance);
 
-        for (name, attribute) in &self
-            .pipeline
-            .bindings
-            .lock()
-            .unwrap()
-            .layout
-            .vertex_attributes
-        {
+        for (name, attribute) in &self.pipeline.layout.vertex_attributes {
             let data = mesh.vertex_data.get(name).unwrap();
 
             if data.format == attribute.format {
@@ -404,7 +352,7 @@ impl<'rp, C: TextureFormat, D: TextureFormat> PipelineRenderPass<'_, 'rp, '_, '_
             base_vertex: 0,
             instances: 0..1,
         });
-
+ 
         self
     }
 }

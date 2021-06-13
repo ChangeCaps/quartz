@@ -126,11 +126,13 @@ impl<T> Bindable for T
 where
     T: Uniform,
 {
-    fn bind(&self, binding: &mut Binding) -> Result<bool, ()> {
+    fn new_binding(&self) -> Result<Binding, ()> {
+        Ok(Binding::uniform_block(Self::size()))
+    }
+
+    fn set(&self, binding: &mut Binding) -> Result<bool, ()> {
         match binding {
-            Binding::UniformBlock {
-                data, ..
-            } => {
+            Binding::UniformBlock { data, .. } => {
                 let new_data = self.data();
 
                 if new_data.len() > data.len() {
@@ -141,7 +143,11 @@ where
 
                 Ok(false)
             }
-            _ => Err(()),
+            _ => {
+                *binding = self.new_binding()?;
+
+                Ok(true)
+            }
         }
     }
 }

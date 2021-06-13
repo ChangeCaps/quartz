@@ -2,6 +2,7 @@ use crate::color::*;
 use crate::prelude::*;
 use format::*;
 use futures::executor::block_on;
+use std::borrow::BorrowMut;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex, RwLock,
@@ -14,6 +15,7 @@ pub trait TextureDimension<D: TextureData>: Clone + 'static {
     fn data_to_bytes<F: TextureFormat>(data: &Self::Data, format: F) -> Vec<u8>;
     fn bytes_to_data<F: TextureFormat>(&self, data: &mut Self::Data, bytes: &[u8], format: F);
     fn get_dimension(&self) -> wgpu::TextureDimension;
+    fn get_view_dimension(&self) -> wgpu::TextureViewDimension;
     fn extent(&self) -> wgpu::Extent3d;
 }
 
@@ -81,6 +83,10 @@ impl<D: TextureData> TextureDimension<D> for D1 {
         wgpu::TextureDimension::D1
     }
 
+    fn get_view_dimension(&self) -> wgpu::TextureViewDimension {
+        wgpu::TextureViewDimension::D1
+    }
+
     fn extent(&self) -> wgpu::Extent3d {
         wgpu::Extent3d {
             width: self.width,
@@ -130,6 +136,10 @@ impl<D: TextureData> TextureDimension<D> for D2 {
 
     fn get_dimension(&self) -> wgpu::TextureDimension {
         wgpu::TextureDimension::D2
+    }
+
+    fn get_view_dimension(&self) -> wgpu::TextureViewDimension {
+        wgpu::TextureViewDimension::D2
     }
 
     fn extent(&self) -> wgpu::Extent3d {
@@ -197,6 +207,10 @@ impl<D: TextureData> TextureDimension<D> for D3 {
         wgpu::TextureDimension::D3
     }
 
+    fn get_view_dimension(&self) -> wgpu::TextureViewDimension {
+        wgpu::TextureViewDimension::D3
+    }
+
     fn extent(&self) -> wgpu::Extent3d {
         wgpu::Extent3d {
             width: self.width,
@@ -260,6 +274,10 @@ impl<D: TextureData> TextureDimension<D> for D2Array {
 
     fn get_dimension(&self) -> wgpu::TextureDimension {
         wgpu::TextureDimension::D2
+    }
+
+    fn get_view_dimension(&self) -> wgpu::TextureViewDimension {
+        wgpu::TextureViewDimension::D2Array
     }
 
     fn extent(&self) -> wgpu::Extent3d {
@@ -468,6 +486,8 @@ impl<D: TextureDimension<F::Data>, F: TextureFormat> Texture<D, F> {
             view: ViewInner::Owned(self.view.clone()),
             download: Some(self.download.clone()),
             extent: self.dimensions.extent(),
+            dimension: self.dimensions.get_view_dimension(),
+            multisampled: false,
             format: self.format.clone(),
         }
     }
@@ -490,6 +510,8 @@ impl<F: TextureFormat> Texture<D2Array, F> {
             view: ViewInner::Owned(Arc::new(view)),
             download: Some(self.download.clone()),
             extent: <D2Array as TextureDimension<F::Data>>::extent(&self.dimensions),
+            dimension: wgpu::TextureViewDimension::D2,
+            multisampled: false,
             format: self.format.clone(),
         }
     }
@@ -515,6 +537,8 @@ pub struct TextureView<'a, F: TextureFormat = TargetFormat> {
     pub(crate) view: ViewInner<'a>,
     pub(crate) download: Option<Arc<AtomicBool>>,
     pub(crate) extent: wgpu::Extent3d,
+    pub(crate) dimension: wgpu::TextureViewDimension,
+    pub(crate) multisampled: bool,
     pub(crate) format: F,
 }
 
@@ -540,6 +564,8 @@ impl<'a, F: TextureFormat> TextureView<'a, F> {
             view: self.view,
             download: self.download,
             extent: self.extent,
+            dimension: self.dimension,
+            multisampled: self.multisampled,
             format: f(self.format),
         }
     }
@@ -552,27 +578,40 @@ impl<'a, F: TextureFormat> TextureView<'a, F> {
 }
 
 impl<F: TextureFormat> Bindable for TextureView<'_, F> {
-    fn bind(&self, binding: &mut Binding) -> Result<bool, ()> {
+    fn new_binding(&self) -> Result<Binding, ()> {
+        match &self.view {
+            ViewInner::Owned(view) => Ok(Binding::Texture {
+                view: view.clone(),
+                dimension: self.dimension,
+                multisampled: self.multisampled,
+            }),
+            _ => Err(()),
+        }
+    }
+
+    fn set(&self, binding: &mut Binding) -> Result<bool, ()> {
         match binding {
-            Binding::Texture { view } => {
+            Binding::Texture {
+                view,
+                dimension,
+                multisampled,
+            } => {
                 let new_view = match &self.view {
                     ViewInner::Owned(view) => view.clone(),
                     _ => return Err(()),
                 };
 
-                if let Some(view) = view {
-                    let recreate = !Arc::ptr_eq(view, &new_view);
+                let recreate = !Arc::ptr_eq(view, &new_view);
 
-                    *view = new_view;
+                *view = new_view;
 
-                    Ok(recreate)
-                } else {
-                    *view = Some(new_view);
-
-                    Ok(true)
-                }
+                Ok(recreate)
             }
-            _ => Err(()),
+            _ => {
+                *binding = self.new_binding()?;
+
+                Ok(true)
+            }
         }
     }
 }

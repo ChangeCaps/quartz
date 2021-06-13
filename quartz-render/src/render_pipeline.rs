@@ -34,178 +34,6 @@ pub enum BindingType {
     },
 }
 
-pub trait Bindable {
-    fn bind(&self, binding: &mut Binding) -> Result<bool, ()>;
-}
-
-/// Implemented for anything that can be bound
-#[derive(Clone, Debug)]
-pub enum Binding {
-    Texture {
-        view: Option<Arc<wgpu::TextureView>>,
-    },
-    Sampler {
-        sampler: Option<Arc<wgpu::Sampler>>,
-    },
-    UniformBlock {
-        data: Vec<u8>,
-        buffer: Arc<wgpu::Buffer>,
-    },
-}
-
-impl Binding {
-    pub fn texture() -> Self {
-        Self::Texture { view: None }
-    }
-
-    pub fn sampler() -> Self {
-        Self::Sampler { sampler: None }
-    }
-
-    pub fn uniform_block(size: u64, instance: &Instance) -> Self {
-        let data = vec![0; size as usize];
-
-        let buffer = instance
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Uniform Block Buffer"),
-                contents: &data,
-                usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
-            });
-
-        Self::UniformBlock {
-            data,
-            buffer: Arc::new(buffer),
-        }
-    }
-
-    pub fn prepare(&self, instance: &Instance) {
-        match self {
-            Binding::UniformBlock {
-                data,
-                buffer,
-            } => {
-                instance.queue.write_buffer(buffer, 0, data);
-            }
-            _ => {}
-        }
-    }
-
-    pub fn binding_resource(&self) -> Option<wgpu::BindingResource> {
-        let binding_resource = match self {
-            Binding::Texture { view, .. } => wgpu::BindingResource::TextureView(view.as_ref()?),
-            Binding::Sampler { sampler, .. } => wgpu::BindingResource::Sampler(sampler.as_ref()?),
-            Binding::UniformBlock { buffer, .. } => buffer.as_entire_binding(),
-        };
-
-        Some(binding_resource)
-    }
-}
-
-#[derive(Debug)]
-pub struct Bindings {
-    pub(crate) bindings: HashMap<String, (Binding, Arc<AtomicBool>)>,
-    pub(crate) layout: Arc<PipelineLayout>,
-    pub(crate) bind_groups: Arc<Mutex<HashMap<u32, Arc<wgpu::BindGroup>>>>,
-}
-
-impl Bindings {
-    pub fn new(layout: PipelineLayout, instance: &Instance) -> Self {
-        let mut bindings = HashMap::new();
-
-        for bind_group in &layout.bind_groups {
-            for (_binding, entry) in &bind_group.bindings {
-                let binding = match &entry.ty {
-                    BindingType::Sampler => Binding::sampler(),
-                    BindingType::Texture { .. } => Binding::texture(),
-                    BindingType::UniformBuffer { size, .. } => {
-                        Binding::uniform_block(*size, instance)
-                    }
-                    _ => unimplemented!(),
-                };
-
-                bindings.insert(entry.ident.clone(), (binding, Arc::new(AtomicBool::new(true))));
-            }
-        }
-
-        Self {
-            bindings,
-            layout: Arc::new(layout),
-            bind_groups: Default::default(),
-        }
-    }
-
-    pub fn clone_state(&self) -> Bindings {
-        Bindings {
-            bindings: self.bindings.clone(),
-            layout: self.layout.clone(),
-            bind_groups: self.bind_groups.clone(),
-        }
-    }
-
-    pub fn bind(&mut self, ident: impl Into<String>, bindable: &impl Bindable) {
-        if let Some((binding, recreate)) = self.bindings.get_mut(&ident.into()) {
-            recreate.fetch_or(bindable.bind(binding).expect("Failed to bind binding"), Ordering::SeqCst);
-        } else {
-            panic!("Binding not present");
-        }
-    }
-
-    pub fn len(&self) -> usize {
-        self.bindings.len()
-    }
-
-    pub fn generate_groups(&self, instance: &Instance) -> HashMap<u32, Arc<wgpu::BindGroup>> {
-        let bindings = &self.bindings;
-        let bind_groups = &self.bind_groups;
-
-        self.layout
-            .bind_groups
-            .iter()
-            .enumerate()
-            .for_each(|(i, bind_group)| {
-                let mut recreate_bind_group = false;
-
-                for (_binding, entry) in bind_group.bindings.iter() {
-                    if let Some((binding, recreate)) = bindings.get(&entry.ident) {
-                        recreate_bind_group |= recreate.swap(false, Ordering::SeqCst);
-                        binding.prepare(instance);
-                    } else {
-                        unreachable!("Binding not bound");
-                    }
-                }
-
-                if recreate_bind_group {
-                    let entries = bind_group
-                        .bindings
-                        .iter()
-                        .map(|(_binding, entry)| {
-                            let (binding, _) = bindings.get(&entry.ident).unwrap();
-
-                            wgpu::BindGroupEntry {
-                                binding: entry.binding,
-                                resource: binding.binding_resource().expect("Binding unbound"),
-                            }
-                        })
-                        .collect::<Vec<_>>();
-
-                    let bind_group =
-                        instance
-                            .device
-                            .create_bind_group(&wgpu::BindGroupDescriptor {
-                                label: Some("Bind Group"),
-                                layout: bind_group.layout.as_ref().unwrap(),
-                                entries: &entries,
-                            });
-
-                    bind_groups.lock().unwrap().insert(i as u32, Arc::new(bind_group));
-                }
-            });
-
-        self.bind_groups.lock().unwrap().clone()
-    }
-}
-
 /// Shader side descriptor set binding.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BindGroupEntry {
@@ -331,7 +159,7 @@ pub struct RenderPipeline<
     D: TextureFormat = format::Depth32Float,
 > {
     pub(crate) descriptor: PipelineDescriptor<C, D>,
-    pub(crate) bindings: Arc<Mutex<Bindings>>,
+    pub(crate) layout: PipelineLayout,
     pub(crate) pipeline: Arc<wgpu::RenderPipeline>,
 }
 
@@ -570,24 +398,8 @@ impl<C: TextureFormat, D: TextureFormat> RenderPipeline<C, D> {
 
         Ok(Self {
             descriptor,
-            bindings: Arc::new(Mutex::new(Bindings::new(layout, instance))),
+            layout,
             pipeline: Arc::new(pipeline),
         })
-    }
-
-    /// Sets entire [`Bindings`].
-    pub fn set_bindings(&self, bindings: Bindings) {
-        *self.bindings.lock().unwrap() = bindings;
-    }
-
-    /// Binds a binding.
-    pub fn bind(&self, ident: impl Into<String>, bindable: &impl Bindable) {
-        self.bindings.lock().unwrap().bind(ident, bindable);
-    }
-
-    /// Binds a uniform.
-    #[deprecated(note = "Use bind instead")]
-    pub fn bind_uniform(&self, ident: impl Into<String>, uniform: &impl Uniform) {
-        self.bind(ident, uniform);
     }
 }

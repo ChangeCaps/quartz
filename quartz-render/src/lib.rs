@@ -1,3 +1,4 @@
+pub mod bindings;
 pub mod buffer;
 pub mod color;
 pub mod instance;
@@ -16,6 +17,7 @@ pub use glam;
 pub use wgpu;
 
 pub mod prelude {
+    pub use crate::bindings::*;
     pub use crate::color::*;
     pub use crate::instance::*;
     pub use crate::projection::*;

@@ -46,22 +46,24 @@ impl Sampler {
 }
 
 impl Bindable for Sampler {
-    fn bind(&self, binding: &mut Binding) -> Result<bool, ()> {
+    fn new_binding(&self) -> Result<Binding, ()> {
+        Ok(Binding::sampler(self.sampler.clone()))
+    }
+
+    fn set(&self, binding: &mut Binding) -> Result<bool, ()> {
         match binding {
             Binding::Sampler { sampler } => {
-                if let Some(sampler) = sampler {
-                    let recreate = !Arc::ptr_eq(sampler, &self.sampler);
+                let recreate = !Arc::ptr_eq(sampler, &self.sampler);
 
-                    *sampler = self.sampler.clone();
+                *sampler = self.sampler.clone();
 
-                    Ok(recreate)
-                } else {
-                    *sampler = Some(self.sampler.clone());
-
-                    Ok(true)
-                }
+                Ok(recreate)
             }
-            _ => Err(()),
+            _ => {
+                *binding = self.new_binding()?;
+
+                Ok(true)
+            }
         }
     }
 }

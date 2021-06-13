@@ -1,9 +1,10 @@
 use crate::prelude::*;
 use std::sync::Arc;
 
+#[derive(Clone)]
 pub struct Instance {
     pub(crate) device: Arc<wgpu::Device>,
-    pub(crate) queue: wgpu::Queue,
+    pub(crate) queue: Arc<wgpu::Queue>,
 }
 
 pub struct SwapChain {
@@ -45,15 +46,15 @@ impl Instance {
         let sc_desc = wgpu::SwapChainDescriptor {
             usage: wgpu::TextureUsage::RENDER_ATTACHMENT,
             format: adapter.get_swap_chain_preferred_format(&surface).unwrap(), // FIXME: unwrap
-            width: width,
-            height: height,
+            width,
+            height,
             present_mode: wgpu::PresentMode::Fifo,
         };
         let swap_chain = device.create_swap_chain(&surface, &sc_desc);
 
         let instance = Instance {
             device: Arc::new(device),
-            queue,
+            queue: Arc::new(queue),
         };
 
         let swap_chain = SwapChain {
@@ -112,6 +113,8 @@ impl SwapChain {
                 height: self.height,
                 depth_or_array_layers: 1,
             },
+            dimension: wgpu::TextureViewDimension::D2,
+            multisampled: false,
             format: self.format(),
         };
 
