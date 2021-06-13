@@ -116,6 +116,8 @@ impl Bindings {
                 continue;
             }
 
+            log::trace!("Recreating bind group '{}'", set);
+
             let mut entries = Vec::new();
             let mut layout_entries = Vec::new();
 
