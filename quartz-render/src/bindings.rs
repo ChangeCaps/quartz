@@ -89,7 +89,7 @@ impl Bindings {
         let bindings = self.bindings.entry(set).or_default();
 
         if let Some((binding, changed)) = bindings.get_mut(&group) {
-            *changed = bindable.set(binding).unwrap();
+            *changed |= bindable.set(binding).unwrap();
         } else {
             bindings.insert(group, (bindable.new_binding().unwrap(), true));
         }
