@@ -104,9 +104,7 @@ impl Bindings {
             let mut recreate = false;
 
             for (_index, (binding, changed)) in group.iter_mut() {
-                if *changed {
-                    binding.prepare(instance);
-                }
+                binding.prepare(instance);
 
                 recreate |= *changed;
                 *changed = false;
