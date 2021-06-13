@@ -69,7 +69,7 @@ impl Binding {
     }
 }
 
-#[derive(Debug)]
+#[derive(Default, Debug)]
 pub struct Bindings {
     pub(crate) bindings: HashMap<u32, HashMap<u32, (Binding, bool)>>,
     pub(crate) bind_groups: HashMap<u32, Arc<wgpu::BindGroup>>,
