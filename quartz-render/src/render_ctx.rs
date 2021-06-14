@@ -6,7 +6,12 @@ pub struct RenderCtx<'a> {
 }
 
 impl<'a> RenderCtx<'a> {
-    pub fn render_pass_empty<'b, 'c, C: TextureFormat, D: TextureFormat>(
+    pub fn render_pass_empty<
+        'b,
+        'c,
+        C: ToColorAttachment<'c> + ColorTargetState,
+        D: ToDepthAttachment<'c> + DepthStencilState,
+    >(
         &'b mut self,
         descriptor: &'b RenderPassDescriptor<'c, C, D>,
     ) -> EmptyRenderPass<'b, 'a, 'c, C, D> {

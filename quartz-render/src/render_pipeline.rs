@@ -86,16 +86,14 @@ pub struct ColorState<F: TextureFormat> {
 impl<F: TextureFormat + Default> Default for ColorState<F> {
     fn default() -> Self {
         Self {
-            format: Default::default()
+            format: Default::default(),
         }
     }
-} 
+}
 
 impl<F: TextureFormat> ColorState<F> {
     pub fn default_settings(format: F) -> Self {
-        Self {
-            format,
-        }
+        Self { format }
     }
 
     pub(crate) fn to_target_color_state(&self) -> wgpu::ColorTargetState {
@@ -152,19 +150,17 @@ pub struct DepthState<F: TextureFormat> {
 
 impl<F: TextureFormat> DepthState<F> {
     pub fn default_settings(format: F) -> Self {
-        Self {
-            format,
-        }
+        Self { format }
     }
 }
 
 impl<F: TextureFormat + Default> Default for DepthState<F> {
     fn default() -> Self {
         Self {
-            format: Default::default()
+            format: Default::default(),
         }
     }
-} 
+}
 
 pub trait DepthStencilState {
     type State;
@@ -204,11 +200,7 @@ pub struct PipelineDescriptor<T: ColorTargetState, D: DepthStencilState> {
 }
 
 impl<T: ColorTargetState, D: DepthStencilState> PipelineDescriptor<T, D> {
-    pub fn default_settings(
-        shader: Shader,
-        targets: T::State,
-        depth_stencil: D::State,
-    ) -> Self {
+    pub fn default_settings(shader: Shader, targets: T::State, depth_stencil: D::State) -> Self {
         Self {
             shader,
             targets,

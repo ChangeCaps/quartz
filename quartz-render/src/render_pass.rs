@@ -1,6 +1,5 @@
 use crate::prelude::*;
 use std::sync::{Arc, Mutex};
-use wgpu::BIND_BUFFER_ALIGNMENT;
 pub use wgpu::{LoadOp, Operations};
 
 pub trait ToColorAttachment<'a> {
@@ -306,17 +305,27 @@ where
     }
 }
 
-pub struct EmptyRenderPass<'a, 'b, 'c, C: TextureFormat, D: TextureFormat> {
+pub struct EmptyRenderPass<
+    'a,
+    'b,
+    'c,
+    T: ToColorAttachment<'c> + ColorTargetState,
+    D: ToDepthAttachment<'c> + DepthStencilState,
+> {
     pub(crate) commands: Vec<Command>,
-    pub(crate) descriptor: &'a RenderPassDescriptor<'c, C, D>,
+    pub(crate) descriptor: &'a RenderPassDescriptor<'c, T, D>,
     pub(crate) ctx: &'a mut RenderCtx<'b>,
 }
 
-impl<'a, 'v, 'c, C: TextureFormat, D: TextureFormat> EmptyRenderPass<'a, 'v, 'c, C, D> {
+impl<'a, 'v, 'c, T, D> EmptyRenderPass<'a, 'v, 'c, T, D>
+where
+    T: ToColorAttachment<'c> + ColorTargetState,
+    D: ToDepthAttachment<'c> + DepthStencilState,
+{
     pub fn with_pipeline<'rp>(
         &'rp mut self,
-        pipeline: &'rp RenderPipeline<C, D>,
-    ) -> PipelineRenderPass<'a, 'rp, 'v, 'c, C, D> {
+        pipeline: &'rp RenderPipeline<T, D>,
+    ) -> PipelineRenderPass<'a, 'rp, 'v, 'c, T, D> {
         let mut pass = PipelineRenderPass {
             pipeline,
             pass: self,
@@ -328,13 +337,24 @@ impl<'a, 'v, 'c, C: TextureFormat, D: TextureFormat> EmptyRenderPass<'a, 'v, 'c,
     }
 }
 
-pub struct PipelineRenderPass<'erp, 'rp, 'v, 'c, C: TextureFormat, D: TextureFormat> {
-    pub(crate) pipeline: &'rp RenderPipeline<C, D>,
-    pub(crate) pass: &'rp mut EmptyRenderPass<'erp, 'v, 'c, C, D>,
+pub struct PipelineRenderPass<
+    'erp,
+    'rp,
+    'v,
+    'c,
+    T: ToColorAttachment<'c> + ColorTargetState,
+    D: ToDepthAttachment<'c> + DepthStencilState,
+> {
+    pub(crate) pipeline: &'rp RenderPipeline<T, D>,
+    pub(crate) pass: &'rp mut EmptyRenderPass<'erp, 'v, 'c, T, D>,
 }
 
-impl<'rp, C: TextureFormat, D: TextureFormat> PipelineRenderPass<'_, 'rp, '_, '_, C, D> {
-    pub fn set_pipeline(&mut self, pipeline: &'rp RenderPipeline<C, D>) -> &mut Self {
+impl<'rp, 'c, T, D> PipelineRenderPass<'_, 'rp, '_, 'c, T, D>
+where
+    T: ToColorAttachment<'c> + ColorTargetState,
+    D: ToDepthAttachment<'c> + DepthStencilState,
+{
+    pub fn set_pipeline(&mut self, pipeline: &'rp RenderPipeline<T, D>) -> &mut Self {
         self.pass.commands.push(Command::SetPipeline {
             pipeline: pipeline.pipeline.clone(),
         });
@@ -411,7 +431,12 @@ impl<'rp, C: TextureFormat, D: TextureFormat> PipelineRenderPass<'_, 'rp, '_, '_
     }
 }
 
-impl<C: TextureFormat, D: TextureFormat> Drop for EmptyRenderPass<'_, '_, '_, C, D> {
+impl<
+        'c,
+        T: ToColorAttachment<'c> + ColorTargetState,
+        D: ToDepthAttachment<'c> + DepthStencilState,
+    > Drop for EmptyRenderPass<'_, '_, 'c, T, D>
+{
     fn drop(&mut self) {
         execute_commands(self.descriptor, &self.commands, self.ctx);
     }
