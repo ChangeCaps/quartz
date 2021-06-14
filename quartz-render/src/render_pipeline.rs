@@ -83,6 +83,14 @@ pub struct ColorState<F: TextureFormat> {
     pub format: F,
 }
 
+impl<F: TextureFormat + Default> Default for ColorState<F> {
+    fn default() -> Self {
+        Self {
+            format: Default::default()
+        }
+    }
+} 
+
 impl<F: TextureFormat> ColorState<F> {
     pub fn default_settings(format: F) -> Self {
         Self {
@@ -149,6 +157,14 @@ impl<F: TextureFormat> DepthState<F> {
         }
     }
 }
+
+impl<F: TextureFormat + Default> Default for DepthState<F> {
+    fn default() -> Self {
+        Self {
+            format: Default::default()
+        }
+    }
+} 
 
 pub trait DepthStencilState {
     type State;
