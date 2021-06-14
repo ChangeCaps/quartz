@@ -84,6 +84,12 @@ pub struct ColorState<F: TextureFormat> {
 }
 
 impl<F: TextureFormat> ColorState<F> {
+    pub fn default_settings(format: F) -> Self {
+        Self {
+            format,
+        }
+    }
+
     pub(crate) fn to_target_color_state(&self) -> wgpu::ColorTargetState {
         wgpu::ColorTargetState {
             format: self.format.format(),
@@ -134,6 +140,14 @@ impl_color_target_state!(A, B, C, D, E, F, G, H);
 
 pub struct DepthState<F: TextureFormat> {
     pub format: F,
+}
+
+impl<F: TextureFormat> DepthState<F> {
+    pub fn default_settings(format: F) -> Self {
+        Self {
+            format,
+        }
+    }
 }
 
 pub trait DepthStencilState {
