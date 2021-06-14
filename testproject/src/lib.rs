@@ -118,12 +118,11 @@ impl Default for TerrainSettings {
 #[derive(Reflect, Inspect)]
 pub struct TerrainChunk {
     pub size: f32,
+
     pub resolution: u32,
+
     #[reflect(reflect)]
     pub settings: TerrainSettings,
-    #[inspect(collapsing)]
-    #[reflect(ignore)]
-    pub mesh: Mesh,
 }
 
 impl Default for TerrainChunk {
@@ -138,98 +137,97 @@ impl Default for TerrainChunk {
             size: 50.0,
             resolution: 100,
             settings: Default::default(),
-            mesh,
         }
     }
 }
 
 impl TerrainChunk {
     pub fn generate(&mut self, ctx: ComponentCtx) {
-        println!("generating");
+        ctx.components.get_or_default(|mesh: &mut ProceduralMesh3d| {
+            let mut positions = Vec::new(); 
+            let mut indices = Vec::new();
+            let mut colors = Vec::new();
 
-        let mut positions = Vec::new();
-        let mut indices = Vec::new();
-        let mut colors = Vec::new();
+            let noise = noise::OpenSimplex::new();
 
-        let noise = noise::OpenSimplex::new();
+            for x in 0..self.resolution {
+                for z in 0..self.resolution {
+                    let mut pos = Vec3::new(x as f32, 0.0, z as f32);
+                    pos /= self.resolution as f32 - 1.0;
+                    pos *= self.size;
+                    pos -= Vec3::splat(self.size as f32 / 2.0);
+                    pos += ctx.transform.translation;
 
-        for x in 0..self.resolution {
-            for z in 0..self.resolution {
-                let mut pos = Vec3::new(x as f32, 0.0, z as f32);
-                pos /= self.resolution as f32 - 1.0;
-                pos *= self.size;
-                pos -= Vec3::splat(self.size as f32 / 2.0);
-                pos += ctx.transform.translation;
+                    let mountains = 1.0
+                        - detailed_noise(
+                            &noise,
+                            pos * self.settings.mountain_scale * 0.1,
+                            self.settings.mountain_detail,
+                        )
+                        .abs();
 
-                let mountains = 1.0
-                    - detailed_noise(
+                    let hills = detailed_noise(
                         &noise,
-                        pos * self.settings.mountain_scale * 0.1,
-                        self.settings.mountain_detail,
-                    )
-                    .abs();
+                        pos * self.settings.scale * 0.1 + Vec3::splat(-100.0),
+                        self.settings.detail,
+                    );
 
-                let hills = detailed_noise(
-                    &noise,
-                    pos * self.settings.scale * 0.1 + Vec3::splat(-100.0),
-                    self.settings.detail,
-                );
+                    let mountain_mask = hills.max(0.0).powi(2);
 
-                let mountain_mask = hills.max(0.0).powi(2);
+                    let height = hills * self.settings.height
+                        + mountain_mask * mountains * self.settings.mountain_height;
 
-                let height = hills * self.settings.height
-                    + mountain_mask * mountains * self.settings.mountain_height;
+                    pos -= ctx.transform.translation;
+                    pos.y = height;
 
-                pos -= ctx.transform.translation;
-                pos.y = height;
+                    let color = Color::rgb(0.1, 0.7, 0.2)
+                        .lerp(Color::rgb(0.3, 0.3, 0.3), (mountain_mask * 20.0).min(1.0));
 
-                let color = Color::rgb(0.1, 0.7, 0.2)
-                    .lerp(Color::rgb(0.3, 0.3, 0.3), (mountain_mask * 20.0).min(1.0));
-
-                positions.push(pos);
-                colors.push(color);
+                    positions.push(pos);
+                    colors.push(color);
+                }
             }
-        }
 
-        for x in 0..self.resolution - 1 {
-            for z in 0..self.resolution - 1 {
-                let index = z * self.resolution + x;
+            for x in 0..self.resolution - 1 {
+                for z in 0..self.resolution - 1 {
+                    let index = z * self.resolution + x;
 
-                indices.push(index);
-                indices.push(index + 1);
-                indices.push(index + self.resolution);
-                indices.push(index + self.resolution + 1);
-                indices.push(index + self.resolution);
-                indices.push(index + 1);
+                    indices.push(index);
+                    indices.push(index + 1);
+                    indices.push(index + self.resolution);
+                    indices.push(index + self.resolution + 1);
+                    indices.push(index + self.resolution);
+                    indices.push(index + 1);
+                }
             }
-        }
 
-        let mut normals = vec![Vec3::ZERO; positions.len()];
+            let mut normals = vec![Vec3::ZERO; positions.len()];
 
-        for i in 0..indices.len() / 3 {
-            let i0 = indices[i * 3 + 0] as usize;
-            let i1 = indices[i * 3 + 1] as usize;
-            let i2 = indices[i * 3 + 2] as usize;
+            for i in 0..indices.len() / 3 {
+                let i0 = indices[i * 3 + 0] as usize;
+                let i1 = indices[i * 3 + 1] as usize;
+                let i2 = indices[i * 3 + 2] as usize;
 
-            let p0 = positions[i0];
-            let p1 = positions[i1];
-            let p2 = positions[i2];
+                let p0 = positions[i0];
+                let p1 = positions[i1];
+                let p2 = positions[i2];
 
-            let normal = (p1 - p0).cross(p2 - p0).normalize();
+                let normal = (p1 - p0).cross(p2 - p0).normalize();
 
-            normals[i0] += normal;
-            normals[i1] += normal;
-            normals[i2] += normal;
-        }
+                normals[i0] += normal;
+                normals[i1] += normal;
+                normals[i2] += normal;
+            }
 
-        for normal in &mut normals {
-            *normal = normal.normalize();
-        }
+            for normal in &mut normals {
+                *normal = normal.normalize();
+            }
 
-        self.mesh.set_attribute("vertex_position", positions);
-        self.mesh.set_attribute("vertex_normal", normals);
-        self.mesh.set_attribute("vertex_color", colors);
-        self.mesh.set_indices(indices);
+            mesh.mesh.set_attribute("vertex_position", positions);
+            mesh.mesh.set_attribute("vertex_normal", normals);
+            mesh.mesh.set_attribute("vertex_color", colors);
+            mesh.mesh.set_indices(indices);
+        });
     }
 }
 
@@ -248,29 +246,6 @@ impl Component for TerrainChunk {
 
     fn editor_start(&mut self, _: &mut Render3dPlugin, ctx: ComponentCtx) {
         self.generate(ctx);
-    }
-
-    fn render(&mut self, render: &mut Render3dPlugin, ctx: ComponentRenderCtx) {
-        let camera = if ctx.viewport_camera.is_some() {
-            ctx.viewport_camera
-        } else {
-            &render.view_proj
-        };
-
-        if let Some(view_proj) = camera {
-            let model = ctx.global_transform.matrix();
-
-            render.pbr_pipeline.bind_uniform("Transform", &model);
-            render.pbr_pipeline.bind_uniform("Camera", view_proj);
-
-            ctx.render_pass
-                .with_pipeline(&render.pbr_pipeline)
-                .draw_mesh(&self.mesh);
-        }
-    }
-
-    fn viewport_pick_render(&mut self, _: &mut Render3dPlugin, ctx: ComponentPickCtx) {
-        ctx.render_pass.draw_mesh(&self.mesh);
     }
 }
 

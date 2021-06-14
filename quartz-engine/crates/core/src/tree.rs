@@ -243,10 +243,6 @@ impl Tree {
     ) {
         for node_id in self.nodes() {
             if let Some(mut node) = self.get_node(&node_id) {
-                render_pipeline.bind_uniform("NodeId", &(node_id.0 as u32));
-                render_pipeline.bind_uniform("Camera", viewport_camera);
-                render_pipeline.bind_uniform("Transform", &node.global_transform.matrix());
-
                 node.viewport_pick_render(
                     plugins,
                     &node_id,

@@ -155,8 +155,9 @@ impl GameState {
         self.plugins.render(plugin_ctx);
 
         let desc = RenderPassDescriptor {
-            depth_attachment: Some(DepthAttachment::default_settings(self.depth_texture.view())),
-            ..RenderPassDescriptor::default_settings(target)
+            label: Some("Main game render pass".to_string()),
+            color_attachments: ColorAttachment::default_settings(target),
+            depth_attachment: DepthAttachment::default_settings(self.depth_texture.view()),
         };
         let mut render_pass = render_ctx.render_pass_empty(&desc);
 
@@ -184,8 +185,9 @@ impl GameState {
         self.plugins.viewport_render(plugin_ctx);
 
         let desc = RenderPassDescriptor {
-            depth_attachment: Some(DepthAttachment::default_settings(self.depth_texture.view())),
-            ..RenderPassDescriptor::default_settings(target)
+            label: Some("Viewport render pass".to_string()),
+            color_attachments: ColorAttachment::default_settings(target),
+            depth_attachment: DepthAttachment::default_settings(self.depth_texture.view()),
         };
         let mut render_pass = render_ctx.render_pass_empty(&desc);
 
@@ -204,7 +206,7 @@ impl GameState {
     ) {
         let desc = RenderPassDescriptor {
             label: Some("Viewport pick pass".to_string()),
-            color_attachments: vec![ColorAttachment {
+            color_attachments: ColorAttachment {
                 texture: texture.view(),
                 resolve_target: None,
                 ops: Operations {
@@ -216,8 +218,8 @@ impl GameState {
                     }),
                     store: true,
                 },
-            }],
-            depth_attachment: Some(DepthAttachment::default_settings(depth_texture.view())),
+            },
+            depth_attachment: DepthAttachment::default_settings(depth_texture.view()),
         };
 
         let mut render_pass = render_ctx.render_pass(&desc, pipeline);

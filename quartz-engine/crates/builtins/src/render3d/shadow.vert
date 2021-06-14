@@ -2,8 +2,6 @@
 
 layout(location = 0) in vec3 vertex_position;
 
-layout(location = 0) out vec3 v_world_position;
-
 layout(set = 0, binding = 0) uniform Transform {
     mat4 model;
 };
@@ -13,6 +11,5 @@ layout(set = 0, binding = 1) uniform Camera {
 };
 
 void main() {
-    v_world_position = (model * vec4(vertex_position, 1.0)).xyz;
     gl_Position = view_proj * model * vec4(vertex_position, 1.0);
 }

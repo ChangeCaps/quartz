@@ -482,6 +482,7 @@ impl<'a, 'de> DeserializeSeed<'de> for NodeDeserializer<'a> {
                         .ok_or(de::Error::invalid_length(1, &self))?,
                     global_transform: Transform::IDENTITY,
                     components: NodeComponents {
+                        add: Default::default(),
                         components: seq
                             .next_element_seed(ComponentsDeserializer {
                                 plugins: self.plugins,
@@ -534,7 +535,7 @@ impl<'a, 'de> DeserializeSeed<'de> for NodeDeserializer<'a> {
                     name,
                     transform,
                     global_transform: Transform::IDENTITY,
-                    components: NodeComponents { components },
+                    components: NodeComponents { components, add: Default::default() },
                 })
             }
         }

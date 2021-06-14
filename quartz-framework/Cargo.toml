@@ -7,8 +7,13 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-quartz-render = { path = "../quartz-render" }
+quartz-render = { git = "https://github.com/ChangeCaps/quartz", branch = "main" }
+# quartz-render = { path = "../quartz-render" }
 winit = "0.25"
 futures = "0.3"
 anyhow = "1.0"
 serde = { version = "1.0", features = ["derive"] }
+
+[dev-dependencies]
+env_logger = "0.8.3"
+log = "0.4"

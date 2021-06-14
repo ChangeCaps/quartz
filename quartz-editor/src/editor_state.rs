@@ -124,7 +124,8 @@ pub struct Opts {
 }
 
 pub struct EditorState {
-    pub egui_pipeline: RenderPipeline,
+    pub egui_bindings: Vec<Bindings>,
+    pub egui_pipeline: RenderPipeline<format::TargetFormat, ()>,
     pub egui_ctx: CtxRef,
     pub egui_raw_input: RawInput,
     pub egui_texture_version: Option<u64>,
@@ -156,10 +157,7 @@ impl EditorState {
         )
         .unwrap();
         let egui_pipeline = RenderPipeline::new(
-            PipelineDescriptor {
-                depth_stencil: None,
-                ..PipelineDescriptor::default_settings(egui_shader, target_format)
-            },
+            PipelineDescriptor::default_settings(egui_shader, ColorState::default_settings(target_format), ()),
             instance,
         )
         .unwrap();
@@ -171,7 +169,7 @@ impl EditorState {
         )
         .unwrap();
         let pick_pipeline = RenderPipeline::new(
-            PipelineDescriptor::default_settings(pick_shader, Default::default()),
+            PipelineDescriptor::default_settings(pick_shader, Default::default(), Default::default()),
             instance,
         )
         .unwrap();
@@ -215,6 +213,7 @@ impl EditorState {
         mesh.add_attribute::<Color>("color");
 
         Self {
+            egui_bindings: Default::default(),
             egui_pipeline,
             egui_ctx: CtxRef::default(),
             egui_raw_input: RawInput::default(),
@@ -257,7 +256,7 @@ impl EditorState {
             .arg("--manifest-path")
             .arg(&self.project.path.join("Cargo.toml"));
 
-        command.stdout(Stdio::piped()).stderr(Stdio::piped());
+        //command.stdout(Stdio::piped()).stderr(Stdio::piped());
 
         let child = command.spawn()?;
 
@@ -337,12 +336,20 @@ impl EditorState {
 
             GameState::deserialize(
                 &mut deserializer,
-                &self.project.path.join(LIB_PATH).join(libloading::library_filename("testproject")),
+                &self
+                    .project
+                    .path
+                    .join(LIB_PATH)
+                    .join(libloading::library_filename("testproject")),
                 instance,
             )
         } else {
             GameState::load(
-                &self.project.path.join(LIB_PATH).join(libloading::library_filename("testproject")),
+                &self
+                    .project
+                    .path
+                    .join(LIB_PATH)
+                    .join(libloading::library_filename("testproject")),
                 instance,
             )
         };
@@ -543,7 +550,6 @@ impl State for EditorState {
             .screen_rect
             .unwrap_or(Rect::from_min_size(Default::default(), egui::Vec2::ZERO));
         let screen_size = Vec2::new(size.width(), size.height());
-        self.egui_pipeline.bind_uniform("ScreenSize", &screen_size);
 
         self.egui_ctx.begin_frame(self.egui_raw_input.take());
 
@@ -577,13 +583,7 @@ impl State for EditorState {
                     }
                 }
             });
-
-            self.egui_pipeline.bind("tex", self.egui_texture.view());
-            self.egui_pipeline
-                .bind("tex_sampler", self.egui_sampler.clone());
         }
-
-        let mut render_ctx = instance.render();
 
         for viewport in &self.viewports {
             if let Some(texture) = self.egui_textures.get(&viewport.texture_id) {
@@ -614,6 +614,8 @@ impl State for EditorState {
                                     );
                                 }
 
+                                let mut render_ctx = instance.render();
+
                                 state.viewport_pick_render(
                                     &camera.view_proj(),
                                     &self.pick_pipeline,
@@ -631,6 +633,8 @@ impl State for EditorState {
                                 );
                             }
                             ViewportType::Game => {
+                                let mut render_ctx = instance.render();
+
                                 state.render(view, &mut render_ctx, instance);
                             }
                         }
@@ -639,31 +643,38 @@ impl State for EditorState {
             }
         }
 
-        let desc = RenderPassDescriptor::default_settings(target);
+        let mut render_ctx = instance.render();
+
+        let desc = RenderPassDescriptor {
+            label: Some("Ui render pass".to_string()),
+            color_attachments: ColorAttachment::default_settings(target),
+            depth_attachment: (),
+        };
 
         let mut pass = render_ctx.render_pass(&desc, &self.egui_pipeline);
 
-        self.egui_pipeline.bind_uniform("ClipRect", &Vec4::default());
+        for (i, ClippedMesh(rect, mesh)) in clipped_meshes.iter().enumerate() {
+            if i >= self.egui_bindings.len() {
+                self.egui_bindings.push(Default::default());
+            }
 
-        println!("{}", clipped_meshes.len());
+            let bindings = &mut self.egui_bindings[i];
+            bindings.bind(0, 0, &screen_size);
+            bindings.bind(1, 1, &self.egui_sampler);
 
-        for ClippedMesh(rect, mesh) in &clipped_meshes {
             // TODO: use scissor rect
-            /*
             let clip_rect = Vec4::new(rect.min.x, rect.min.y, rect.max.x, rect.max.y);
-            self.egui_pipeline.bind_uniform("ClipRect", &clip_rect);
+            bindings.bind(0, 1, &clip_rect);
 
             match &mesh.texture_id {
-                TextureId::Egui => self.egui_pipeline.bind("tex", self.egui_texture.view()),
+                TextureId::Egui => bindings.bind(1, 0, &self.egui_texture.view()),
                 TextureId::User(id) => {
                     if let Some(texture) = self.egui_textures.get(id) {
-                        self.egui_pipeline.bind("tex", texture.view());
+                        bindings.bind(1, 0, &texture.view());
                     }
                 }
             }
-            */
 
-            /*
             let indices = mesh.indices.clone();
             let mut pos = Vec::with_capacity(mesh.vertices.len());
             let mut uv = Vec::with_capacity(mesh.vertices.len());
@@ -691,16 +702,14 @@ impl State for EditorState {
                     ));
                 }
             }
-            */
 
-            /*
             self.mesh.set_attribute("pos", pos);
             self.mesh.set_attribute("uv", uv);
             self.mesh.set_attribute("color", color);
             self.mesh.set_indices(indices);
-            */
 
-            //pass.draw_mesh(&self.mesh);
+            pass.set_bindings(bindings);
+            pass.draw_mesh(&self.mesh);
         }
     }
 }

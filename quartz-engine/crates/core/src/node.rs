@@ -9,7 +9,7 @@ use quartz_render::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{
     any::TypeId,
-    sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
+    sync::{RwLock, RwLockReadGuard, RwLockWriteGuard, Mutex, MutexGuard},
 };
 
 #[derive(Clone, Debug, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -28,40 +28,67 @@ impl Into<Option<NodeId>> for &NodeId {
 }
 
 pub struct NodeComponents {
+    pub(crate) add: Mutex<Vec<Box<dyn ComponentPod>>>,
     pub(crate) components: LinkedHashMap<String, RwLock<Box<dyn ComponentPod>>>,
 }
 
 impl NodeComponents {
     pub fn new() -> Self {
         Self {
+            add: Default::default(),
             components: LinkedHashMap::new(),
         }
     }
 
-    pub fn add_component(&mut self, to_pod: impl ToPod) {
+    /// Adds a component to a queue, and is added at the end of the component method.
+    /// eg. update
+    pub fn add(&self, to_pod: impl ToPod) {
+        self.add.lock().unwrap().push(to_pod.to_pod());
+    }
+
+    pub fn add_direct(&mut self, to_pod: impl ToPod) {
         let component = to_pod.to_pod();
         self.components
             .insert(component.long_name().to_string(), RwLock::new(component));
     }
 
-    pub fn get_component<T: ComponentPod>(&self) -> Option<RwLockReadGuard<Box<T>>> {
+    pub fn get<T: ComponentPod>(&self) -> Option<RwLockReadGuard<Box<T>>> {
         let component = self.components.get(T::long_name_const())?.read().unwrap();
 
         if component.as_ref().get_type_id() == TypeId::of::<T>() {
+            // SAFETY: since types are identical transmuting is safe
             Some(unsafe { std::mem::transmute(component) })
         } else {
             None
         }
     }
 
-    pub fn get_component_mut<T: ComponentPod>(&self) -> Option<RwLockWriteGuard<Box<T>>> {
+    pub fn get_mut<T: ComponentPod>(&self) -> Option<RwLockWriteGuard<Box<T>>> {
         let component = self.components.get(T::long_name_const())?.write().unwrap();
 
         if component.as_ref().get_type_id() == TypeId::of::<T>() {
+            // SAFETY: since types are identical transmuting is safe
             Some(unsafe { std::mem::transmute(component) })
         } else {
             None
         }
+    }
+
+    pub fn get_or_default<T: ComponentPod + Default, O>(&self, mut f: impl FnMut(&mut T) -> O) -> O {
+        if let Some(mut component) = self.get_mut::<T>() {
+            f(&mut component)
+        } else {
+            let mut component = T::default();
+
+            let out = f(&mut component);
+            self.add(component);
+
+            out
+        }
+    }
+
+    pub fn has<T: ComponentPod>(&self) -> bool {
+        self.components.contains_key(T::long_name_const())
     }
 
     pub fn components(&self) -> impl Iterator<Item = RwLockReadGuard<Box<dyn ComponentPod>>> {
@@ -70,6 +97,12 @@ impl NodeComponents {
 
     pub fn components_mut(&self) -> impl Iterator<Item = RwLockWriteGuard<Box<dyn ComponentPod>>> {
         self.components.values().map(|c| c.write().unwrap())
+    }
+
+    pub fn update(&mut self) {
+        for component in self.add.lock().unwrap().drain(..) {
+            self.components.insert(component.long_name().to_string(), RwLock::new(component));
+        }
     }
 }
 
@@ -95,15 +128,15 @@ impl Node {
     }
 
     pub fn add_component(&mut self, component: impl ToPod) {
-        self.components.add_component(component);
+        self.components.add(component);
     }
 
     pub fn get_component<T: ComponentPod>(&self) -> Option<RwLockReadGuard<Box<T>>> {
-        self.components.get_component::<T>()
+        self.components.get::<T>()
     }
 
     pub fn get_component_mut<T: ComponentPod>(&self) -> Option<RwLockWriteGuard<Box<T>>> {
-        self.components.get_component_mut::<T>()
+        self.components.get_mut::<T>()
     }
 }
 
@@ -178,6 +211,8 @@ impl Node {
                 }
             });
         });
+
+        self.components.update();
     }
 
     pub fn start(
@@ -200,6 +235,8 @@ impl Node {
 
             component.start(plugins, ctx);
         }
+
+        self.components.update();
     }
 
     pub fn editor_start(
@@ -222,6 +259,8 @@ impl Node {
 
             component.editor_start(plugins, ctx);
         }
+
+        self.components.update();
     }
 
     pub fn update(
@@ -244,6 +283,8 @@ impl Node {
 
             component.write().unwrap().update(plugins, ctx);
         }
+
+        self.components.update();
     }
 
     pub fn editor_update(
@@ -266,6 +307,8 @@ impl Node {
 
             component.write().unwrap().editor_update(plugins, ctx);
         }
+
+        self.components.update();
     }
 
     pub fn render(
@@ -292,6 +335,8 @@ impl Node {
 
             component.write().unwrap().render(plugins, ctx);
         }
+        
+        self.components.update();
     }
 
     pub fn viewport_render(
@@ -318,6 +363,8 @@ impl Node {
 
             component.write().unwrap().viewport_render(plugins, ctx);
         }
+
+        self.components.update();
     }
 
     pub fn viewport_pick_render(
@@ -347,6 +394,8 @@ impl Node {
                 .unwrap()
                 .viewport_pick_render(plugins, ctx);
         }
+
+        self.components.update();
     }
 
     pub fn despawn(
@@ -369,5 +418,7 @@ impl Node {
 
             component.write().unwrap().despawn(plugins, ctx);
         }
+
+        self.components.update();
     }
 }

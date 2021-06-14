@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use quartz_engine_core::egui::Ui;
 use quartz_engine_core::prelude::*;
 use quartz_engine_core::render::wgpu;
@@ -30,7 +32,7 @@ pub struct Render3dPlugin {
 
     #[reflect(ignore)]
     #[inspect(ignore)]
-    pub shadow_pipeline: RenderPipeline,
+    pub shadow_pipeline: RenderPipeline<()>,
 
     #[reflect(ignore)]
     #[inspect(ignore)]
@@ -55,6 +57,10 @@ pub struct Render3dPlugin {
     #[reflect(ignore)]
     #[inspect(ignore)]
     pub directional_lights: UniformBuffer<DirectionalLightRaw, MAX_DIR_LIGHTS>,
+
+    #[reflect(ignore)]
+    #[inspect(ignore)]
+    pub shadow_bindings: HashMap<NodeId, Bindings>,
 }
 
 impl Plugin for Render3dPlugin {
@@ -62,21 +68,22 @@ impl Plugin for Render3dPlugin {
         let pbr_shader =
             Shader::from_glsl(include_str!("pbr.vert"), include_str!("pbr.frag")).unwrap();
         let pbr_pipeline = RenderPipeline::new(
-            PipelineDescriptor::default_settings(pbr_shader, ctx.target_format),
+            PipelineDescriptor::default_settings(pbr_shader, ColorState::default_settings(ctx.target_format), Default::default()),
             ctx.instance,
         )
         .unwrap();
 
         let shadow_shader =
             Shader::from_glsl(include_str!("shadow.vert"), include_str!("shadow.frag")).unwrap();
-        let shadow_pipeline = RenderPipeline::new(
+        let shadow_pipeline = RenderPipeline::new( 
             PipelineDescriptor {
-                targets: vec![],
+                shader: shadow_shader,
+                targets: (),
                 primitive: wgpu::PrimitiveState {
                     cull_mode: None,
                     ..Default::default()
                 },
-                ..PipelineDescriptor::default_settings(shadow_shader, ctx.target_format)
+                depth_stencil: Default::default(),
             },
             ctx.instance,
         )
@@ -88,9 +95,6 @@ impl Plugin for Render3dPlugin {
             &TextureDescriptor::default_settings(D2Array::new(4096, 4096, MAX_DIR_LIGHTS)),
             ctx.instance,
         );
-
-        pbr_pipeline.bind("DirectionalShadowMaps", directional_light_maps.view());
-        pbr_pipeline.bind("ShadowSampler", shadow_map_sampler.clone());
 
         Self {
             ambient_light: AmbientLight {
@@ -105,6 +109,7 @@ impl Plugin for Render3dPlugin {
             point_lights: UniformBuffer::new(),
             directional_light_maps,
             directional_lights: UniformBuffer::new(),
+            shadow_bindings: HashMap::new(),
         }
     }
 
@@ -125,6 +130,8 @@ impl Plugin for Render3dPlugin {
         for node_id in ctx.tree.nodes() {
             let node = ctx.tree.get_node(node_id).unwrap();
 
+            let light_pos = node.global_transform().translation;
+
             let light = node.get_component::<DirectionalLight3d>();
 
             if let Some(light) = light {
@@ -132,17 +139,12 @@ impl Plugin for Render3dPlugin {
                     let light_view_proj =
                         light.projection() * node.global_transform().matrix().inverse();
 
-                    self.shadow_pipeline
-                        .bind_uniform("Camera", &light_view_proj);
-                    self.shadow_pipeline
-                        .bind_uniform("CameraPos", &node.global_transform().translation);
-
-                    let desc = RenderPassDescriptor::<format::TargetFormat> {
+                    let desc = RenderPassDescriptor {
                         label: Some(String::from("Shadow pass")),
-                        color_attachments: vec![],
-                        depth_attachment: Some(DepthAttachment::default_settings(
+                        color_attachments: (),
+                        depth_attachment: DepthAttachment::default_settings(
                             self.directional_light_maps.layer_view(light.index),
-                        )),
+                        ),
                     };
 
                     let mut pass = render_ctx.render_pass(&desc, &self.shadow_pipeline);
@@ -152,14 +154,24 @@ impl Plugin for Render3dPlugin {
                             if let Some(mesh) = node.get_component::<ProceduralMesh3d>() {
                                 let model = node.global_transform().matrix();
 
-                                self.shadow_pipeline.bind_uniform("Transform", &model);
+                                let bindings = self.shadow_bindings.entry(node_id).or_default();
+
+                                bindings.bind(0, 0, &model);
+                                bindings.bind(0, 1, &light_view_proj);
+                                
+                                pass.set_bindings(bindings);
                                 pass.draw_mesh(&mesh.mesh);
                             }
 
                             if let Some(mesh) = node.get_component::<Mesh3d>() {
                                 let model = node.global_transform().matrix();
 
-                                self.shadow_pipeline.bind_uniform("Transform", &model);
+                                let bindings = self.shadow_bindings.entry(node_id).or_default();
+
+                                bindings.bind(0, 0, &model);
+                                bindings.bind(0, 1, &light_view_proj);
+
+                                pass.set_bindings(bindings);
                                 pass.draw_mesh(&mesh.mesh);
                             }
                         }
@@ -170,11 +182,6 @@ impl Plugin for Render3dPlugin {
     }
 
     fn render(&mut self, ctx: PluginRenderCtx) {
-        self.pbr_pipeline
-            .bind_uniform("AmbientLight", &self.ambient_light);
-        self.pbr_pipeline.bind_uniform("PointLights", &self.point_lights);
-        self.pbr_pipeline.bind_uniform("DirectionalLights", &self.directional_lights);
-
         if let Some(main_camera) = self.main_camera {
             if let Some(node) = ctx.tree.get_node(main_camera) {
                 if let Some(camera) = node.get_component::<Camera3d>() {
@@ -259,16 +266,18 @@ pub struct DirectionalLight3d {
     pub direction: Vec3,
     pub intensity: f32,
     pub shadows: bool,
+    pub area: f32,
 }
 
 impl DirectionalLight3d {
     pub fn projection(&self) -> Mat4 {
         let proj = OrthographicProjection {
-            left: -60.0,
-            right: 60.0,
-            top: 60.0,
-            bottom: -60.0,
-            ..Default::default()
+            left: -self.area / 2.0,
+            right: self.area / 2.0,
+            top: self.area / 2.0,
+            bottom: -self.area / 2.0,
+            far: 500.0,
+            near: -500.0,
         };
         let mut dir = self.direction.normalize();
         dir.y *= -1.0;
@@ -286,6 +295,7 @@ impl Default for DirectionalLight3d {
             direction: Vec3::new(0.0, -1.0, 0.0),
             intensity: 10.0,
             shadows: true,
+            area: 120.0,
         }
     }
 }
@@ -365,6 +375,10 @@ impl Component for Camera3d {
 pub struct Mesh3d {
     #[inspect(collapsing)]
     pub mesh: Mesh,
+
+    #[reflect(ignore)]
+    #[inspect(ignore)]
+    pub bindings: Bindings,
 }
 
 impl Default for Mesh3d {
@@ -376,7 +390,7 @@ impl Default for Mesh3d {
         mesh.add_attribute::<Vec2>("vertex_uv");
         mesh.add_attribute::<Vec4>("vertex_color");
 
-        Self { mesh }
+        Self { mesh, bindings: Default::default() }
     }
 }
 
@@ -397,11 +411,17 @@ impl Component for Mesh3d {
         if let Some(view_proj) = camera {
             let model = ctx.global_transform.matrix();
 
-            render.pbr_pipeline.bind_uniform("Transform", &model);
-            render.pbr_pipeline.bind_uniform("Camera", view_proj);
+            self.bindings.bind(0, 0, &model);
+            self.bindings.bind(0, 1, view_proj);
+            self.bindings.bind(0, 2, &render.point_lights);
+            self.bindings.bind(0, 3, &render.directional_lights);
+            self.bindings.bind(0, 4, &render.ambient_light);
+            self.bindings.bind(1, 0, &render.directional_light_maps.view());
+            self.bindings.bind(1, 1, &render.shadow_map_sampler);
 
             ctx.render_pass
                 .with_pipeline(&render.pbr_pipeline)
+                .set_bindings(&mut self.bindings)
                 .draw_mesh(&self.mesh);
         }
     }
@@ -416,6 +436,10 @@ pub struct ProceduralMesh3d {
     #[reflect(ignore)]
     #[inspect(collapsing)]
     pub mesh: Mesh,
+
+    #[reflect(ignore)]
+    #[inspect(ignore)]
+    pub bindings: Bindings,
 }
 
 impl Default for ProceduralMesh3d {
@@ -427,7 +451,7 @@ impl Default for ProceduralMesh3d {
         mesh.add_attribute::<Vec2>("vertex_uv");
         mesh.add_attribute::<Vec4>("vertex_color");
 
-        Self { mesh }
+        Self { mesh, bindings: Default::default() }
     }
 }
 
@@ -448,16 +472,22 @@ impl Component for ProceduralMesh3d {
         if let Some(view_proj) = camera {
             let model = ctx.global_transform.matrix();
 
-            render.pbr_pipeline.bind_uniform("Transform", &model);
-            render.pbr_pipeline.bind_uniform("Camera", view_proj);
+            self.bindings.bind(0, 0, &model);
+            self.bindings.bind(0, 1, view_proj);
+            self.bindings.bind(0, 2, &render.point_lights);
+            self.bindings.bind(0, 3, &render.directional_lights);
+            self.bindings.bind(0, 4, &render.ambient_light);
+            self.bindings.bind(1, 0, &render.directional_light_maps.view());
+            self.bindings.bind(1, 1, &render.shadow_map_sampler);
 
             ctx.render_pass
                 .with_pipeline(&render.pbr_pipeline)
+                .set_bindings(&mut self.bindings)
                 .draw_mesh(&self.mesh);
         }
     }
 
     fn viewport_pick_render(&mut self, _: &mut Render3dPlugin, ctx: ComponentPickCtx) {
-        ctx.render_pass.draw_mesh(&self.mesh);
+        //ctx.render_pass.draw_mesh(&self.mesh);
     }
 }

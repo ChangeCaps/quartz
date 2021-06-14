@@ -4,6 +4,7 @@ pub struct GameState {
     pipeline: RenderPipeline,
     mesh: Mesh,
     count: usize,
+    generate: bool,
 }
 
 impl GameState {
@@ -19,20 +20,32 @@ impl GameState {
         .unwrap();
 
         let mut mesh = Mesh::new();
-        mesh.set_attribute("vertex_position", vec![Vec3::splat(1.0); 10000]);
-        mesh.set_indices(vec![0; 10000]);
+        mesh.set_attribute("vertex_position", vec![Vec3::splat(1.0); 1]);
+        mesh.set_indices(vec![0; 1]);
 
-        pipeline
-            .bind_uniform("transform", &Mat4::default());
+        pipeline.bind("transform", &0.0f32);
 
-        Self { pipeline, mesh, count: 0 }
+        Self {
+            pipeline,
+            mesh,
+            count: 0,
+            generate: true,
+        }
     }
 }
 
 impl State for GameState {
+    fn update(&mut self, ctx: UpdateCtx) -> Trans {
+        if ctx.keyboard.pressed(&Key::G) {
+            self.generate = !self.generate;
+        }
+
+        Trans::None
+    }
+
     fn render(&mut self, instance: &Instance, main_view: TextureView) {
         self.count += 1;
-        
+
         let mut render_ctx = instance.render();
 
         let desc = RenderPassDescriptor::default_settings(main_view);
@@ -45,15 +58,13 @@ impl State for GameState {
         //    .set_attribute("vertex_position", vec![Vec3::splat(1.0); n]);
         //self.mesh.set_indices(vec![0; n]);
 
-        //pass.set_pipeline_bindings();
-        for _ in 0..100 {
-            self.pipeline.generate_groups(instance);
-
-            //pass.draw_mesh(&self.mesh);
-        }
+        self.pipeline.bind("transform", &20.0f32);
+        pass.draw_mesh(&self.mesh);
     }
 }
 
 fn main() {
+    //env_logger::builder().filter_level(log::LevelFilter::Trace).init();
+
     App::new().run(GameState::new).unwrap()
 }

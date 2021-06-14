@@ -68,7 +68,8 @@ void main() {
     for (int i = 0; i < num_directional_lights; i++) {
         DirectionalLight dlight = directional_lights[i];
 
-        vec2 uv = (dlight.view_proj * vec4(v_world_position, 1.0)).xy;
+        vec4 p = (dlight.view_proj * vec4(v_world_position, 1.0));
+        vec2 uv = p.xy;
         uv /= 2.0;
         uv.y *= -1.0;
         uv += 0.5;
@@ -87,7 +88,7 @@ void main() {
                         vec3(uv + offset, i)
                     ).r;
 
-                    float dist = distance(dlight.pos, v_world_position) / 1000.0;
+                    float dist = p.z;
 
                     if (any(lessThanEqual(uv + offset, vec2(0.0))) || any(greaterThanEqual(uv + offset, vec2(1.0)))) {
                         shadow += 1.0;
