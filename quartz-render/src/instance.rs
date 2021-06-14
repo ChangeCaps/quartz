@@ -20,6 +20,7 @@ impl Instance {
         window: &impl raw_window_handle::HasRawWindowHandle,
         width: u32,
         height: u32,
+        features: wgpu::Features,
     ) -> (Instance, SwapChain) {
         let instance = wgpu::Instance::new(wgpu::BackendBit::PRIMARY);
         let surface = unsafe { instance.create_surface(window) };
@@ -35,7 +36,7 @@ impl Instance {
             .request_device(
                 &wgpu::DeviceDescriptor {
                     label: Some("Device"),
-                    features: wgpu::Features::empty(),
+                    features,
                     limits: wgpu::Limits::default(),
                 },
                 None,
