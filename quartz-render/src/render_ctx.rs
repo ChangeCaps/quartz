@@ -24,7 +24,12 @@ impl<'a> RenderCtx<'a> {
         pass
     }
 
-    pub fn render_pass<'b, 'c, C: TextureFormat, D: TextureFormat>(
+    pub fn render_pass<
+        'b,
+        'c,
+        C: ToColorAttachment<'c> + ColorTargetState,
+        D: ToDepthAttachment<'c> + DepthStencilState,
+    >(
         &'b mut self,
         descriptor: &'b RenderPassDescriptor<'c, C, D>,
         pipeline: &'b RenderPipeline<C, D>,
