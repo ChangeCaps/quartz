@@ -8,7 +8,6 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
 };
-
 use wgpu::{
     util::DeviceExt, BlendState, ColorWrite, CompareFunction, DepthBiasState, FrontFace,
     PolygonMode, PrimitiveState, PrimitiveTopology, StencilState,
@@ -80,64 +79,113 @@ pub struct PipelineLayout {
     pub vertex_attributes: HashMap<String, VertexAttributeLayout>,
 }
 
-pub struct ColorTargetState<F: TextureFormat> {
-    pub blend: Option<BlendState>,
-    pub write_mask: ColorWrite,
+pub struct ColorState<F: TextureFormat> {
     pub format: F,
 }
 
-impl<F: TextureFormat + Default> Default for ColorTargetState<F> {
-    fn default() -> Self {
-        Self {
+impl<F: TextureFormat> ColorState<F> {
+    pub(crate) fn to_target_color_state(&self) -> wgpu::ColorTargetState {
+        wgpu::ColorTargetState {
+            format: self.format.format(),
             blend: Some(BlendState::ALPHA_BLENDING),
             write_mask: ColorWrite::ALL,
-            format: Default::default(),
         }
     }
 }
 
-pub struct DepthStencilState<F: TextureFormat> {
-    pub depth_write_enabled: bool,
-    pub depth_compare: CompareFunction,
-    pub stencil: StencilState,
-    pub bias: DepthBiasState,
+pub trait ColorTargetState {
+    type State;
+
+    fn to_color_state(state: &Self::State) -> Vec<wgpu::ColorTargetState>;
+}
+
+impl ColorTargetState for () {
+    type State = ();
+
+    fn to_color_state(state: &Self::State) -> Vec<wgpu::ColorTargetState> {
+        vec![]
+    }
+}
+
+macro_rules! impl_color_target_state {
+    ($($ident:ident),*) => {
+        #[allow(unused_parens)]
+        impl<$($ident),*> ColorTargetState for ($($ident),*)
+            where $($ident: TextureFormat),*
+        {
+            type State = ($(ColorState<$ident>),*);
+
+            #[allow(non_snake_case)]
+            fn to_color_state(($($ident),*): &Self::State) -> Vec<wgpu::ColorTargetState> {
+                vec![$($ident.to_target_color_state()),*]
+            }
+        }
+    };
+}
+
+impl_color_target_state!(A);
+impl_color_target_state!(A, B);
+impl_color_target_state!(A, B, C);
+impl_color_target_state!(A, B, C, D);
+impl_color_target_state!(A, B, C, D, E);
+impl_color_target_state!(A, B, C, D, E, F);
+impl_color_target_state!(A, B, C, D, E, F, G);
+impl_color_target_state!(A, B, C, D, E, F, G, H);
+
+pub struct DepthState<F: TextureFormat> {
     pub format: F,
 }
 
-impl<F: TextureFormat + Default> Default for DepthStencilState<F> {
-    fn default() -> Self {
-        Self {
+pub trait DepthStencilState {
+    type State;
+
+    fn to_depth_state(state: &Self::State) -> Option<wgpu::DepthStencilState>;
+}
+
+impl DepthStencilState for () {
+    type State = ();
+
+    fn to_depth_state(state: &Self::State) -> Option<wgpu::DepthStencilState> {
+        None
+    }
+}
+
+impl<F: TextureFormat> DepthStencilState for F {
+    type State = DepthState<F>;
+
+    fn to_depth_state(state: &Self::State) -> Option<wgpu::DepthStencilState> {
+        Some(wgpu::DepthStencilState {
+            format: state.format.format(),
             depth_write_enabled: true,
             depth_compare: CompareFunction::LessEqual,
-            stencil: StencilState::default(),
             bias: DepthBiasState::default(),
-            format: Default::default(),
-        }
+            stencil: StencilState::default(),
+        })
     }
 }
 
 /// Used to create a [`RenderPipeline`].
-pub struct PipelineDescriptor<
-    C: TextureFormat = format::TargetFormat,
-    D: TextureFormat = format::Depth32Float,
-> {
+pub struct PipelineDescriptor<T: ColorTargetState, D: DepthStencilState> {
     /// The shader for the pipeline
     pub shader: Shader,
-    pub targets: Vec<ColorTargetState<C>>,
-    pub depth_stencil: Option<DepthStencilState<D>>,
+    pub targets: T::State,
+    pub depth_stencil: D::State,
     pub primitive: PrimitiveState,
 }
 
-impl<C: TextureFormat, D: TextureFormat + Default> PipelineDescriptor<C, D> {
-    pub fn default_settings(shader: Shader, format: C) -> Self {
+impl<T: ColorTargetState, D: DepthStencilState> PipelineDescriptor<T, D> {
+    pub fn default_settings(
+        shader: Shader,
+        depth_stencil: impl Into<wgpu::DepthStencilState>,
+    ) -> Self
+    where
+        T::State: Default,
+        D::State: Default,
+    {
         Self {
             shader,
-            targets: vec![ColorTargetState {
-                blend: Some(BlendState::ALPHA_BLENDING),
-                write_mask: ColorWrite::ALL,
-                format,
-            }],
-            depth_stencil: None,
+            targets: Default::default(),
+            depth_stencil: Default::default(),
             primitive: PrimitiveState {
                 topology: PrimitiveTopology::TriangleList,
                 strip_index_format: None,
@@ -155,18 +203,18 @@ impl<C: TextureFormat, D: TextureFormat + Default> PipelineDescriptor<C, D> {
 ///
 /// Keeps track of [`Bindings`].
 pub struct RenderPipeline<
-    C: TextureFormat = format::TargetFormat,
-    D: TextureFormat = format::Depth32Float,
+    T: ColorTargetState = format::TargetFormat,
+    D: DepthStencilState = format::Depth32Float,
 > {
-    pub(crate) descriptor: PipelineDescriptor<C, D>,
+    pub(crate) descriptor: PipelineDescriptor<T, D>,
     pub(crate) layout: PipelineLayout,
     pub(crate) pipeline: Arc<wgpu::RenderPipeline>,
 }
 
-impl<C: TextureFormat, D: TextureFormat> RenderPipeline<C, D> {
+impl<T: ColorTargetState, D: DepthStencilState> RenderPipeline<T, D> {
     /// Creates a pipeline.
     pub fn new(
-        descriptor: PipelineDescriptor<C, D>,
+        descriptor: PipelineDescriptor<T, D>,
         instance: &Instance,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let limis = instance.device.limits();
@@ -345,27 +393,8 @@ impl<C: TextureFormat, D: TextureFormat> RenderPipeline<C, D> {
                 push_constant_ranges: &[],
             });
 
-        let targets = descriptor
-            .targets
-            .iter()
-            .map(|target| wgpu::ColorTargetState {
-                format: target.format.format(),
-                blend: target.blend.clone(),
-                write_mask: target.write_mask.clone(),
-            })
-            .collect::<Vec<_>>();
-
-        let depth_stencil =
-            descriptor
-                .depth_stencil
-                .as_ref()
-                .map(|depth_stencil| wgpu::DepthStencilState {
-                    format: depth_stencil.format.format(),
-                    depth_write_enabled: depth_stencil.depth_write_enabled,
-                    depth_compare: depth_stencil.depth_compare.clone(),
-                    stencil: depth_stencil.stencil.clone(),
-                    bias: depth_stencil.bias.clone(),
-                });
+        let targets = T::to_color_state(&descriptor.targets);
+        let depth_stencil = D::to_depth_state(&descriptor.depth_stencil);
 
         let pipeline = instance
             .device

@@ -1,6 +1,6 @@
 use crate::instance::*;
-use std::{collections::HashMap, ops::Deref, sync::Arc};
 use serde::de;
+use std::{collections::HashMap, ops::Deref, sync::Arc};
 use wgpu::util::DeviceExt;
 
 pub trait Bindable {
@@ -165,10 +165,10 @@ impl Bindings {
                 layout: &layout,
             };
 
-			let bind_group = instance.device.create_bind_group(&desc);
+            let bind_group = instance.device.create_bind_group(&desc);
 
-			self.layout.insert(*set, layout);
-			self.bind_groups.insert(*set, Arc::new(bind_group));
+            self.layout.insert(*set, layout);
+            self.bind_groups.insert(*set, Arc::new(bind_group));
         }
     }
 }

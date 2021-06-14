@@ -3,6 +3,77 @@ use std::sync::{Arc, Mutex};
 use wgpu::BIND_BUFFER_ALIGNMENT;
 pub use wgpu::{LoadOp, Operations};
 
+pub trait ToColorAttachment<'a> {
+    type State;
+
+    fn to_color_attachment(state: &Self::State) -> Vec<wgpu::RenderPassColorAttachment>;
+}
+
+impl<'a> ToColorAttachment<'a> for () {
+    type State = ();
+
+    fn to_color_attachment(_state: &Self::State) -> Vec<wgpu::RenderPassColorAttachment> {
+        vec![]
+    }
+}
+
+macro_rules! impl_color_attachment {
+    ($($ident:ident),*) => {
+        #[allow(unused_parens)]
+        impl<'a, $($ident),*> ToColorAttachment<'a> for ($($ident),*)
+            where $($ident: TextureFormat),*
+        {
+            type State = ($(ColorAttachment<'a, $ident>),*);
+
+            #[allow(non_snake_case)]
+            fn to_color_attachment(($($ident),*): &Self::State) -> Vec<wgpu::RenderPassColorAttachment> {
+                vec![$(
+                    wgpu::RenderPassColorAttachment {
+                        view: $ident.texture.view(),
+                        resolve_target: None,
+                        ops: $ident.ops.clone(),
+                    }
+                ),*]
+            }
+        }
+    };
+}
+
+impl_color_attachment!(A);
+impl_color_attachment!(A, B);
+impl_color_attachment!(A, B, C);
+impl_color_attachment!(A, B, C, D);
+impl_color_attachment!(A, B, C, D, E);
+impl_color_attachment!(A, B, C, D, E, F);
+impl_color_attachment!(A, B, C, D, E, F, G);
+impl_color_attachment!(A, B, C, D, E, F, G, H);
+
+pub trait ToDepthAttachment<'a> {
+    type State;
+
+    fn to_depth_attachment(state: &Self::State) -> Option<wgpu::RenderPassDepthStencilAttachment>;
+}
+
+impl<'a> ToDepthAttachment<'a> for () {
+    type State = ();
+
+    fn to_depth_attachment(_state: &Self::State) -> Option<wgpu::RenderPassDepthStencilAttachment> {
+        None
+    }
+}
+
+impl<'a, F: TextureFormat> ToDepthAttachment<'a> for F {
+    type State = DepthAttachment<'a, F>;
+
+    fn to_depth_attachment(state: &Self::State) -> Option<wgpu::RenderPassDepthStencilAttachment> {
+        Some(wgpu::RenderPassDepthStencilAttachment {
+            view: state.texture.view(),
+            depth_ops: state.depth_ops.clone(),
+            stencil_ops: state.stencil_ops.clone(),
+        })
+    }
+}
+
 pub struct ColorAttachment<'a, F: TextureFormat> {
     pub texture: TextureView<'a, F>,
     pub resolve_target: Option<TextureView<'a, F>>,
@@ -30,29 +101,12 @@ impl<'a, F: TextureFormat> DepthAttachment<'a, F> {
 
 pub struct RenderPassDescriptor<
     'a,
-    C: TextureFormat = format::TargetFormat,
-    D: TextureFormat = format::Depth32Float,
+    T: ToColorAttachment<'a> = format::TargetFormat,
+    D: ToDepthAttachment<'a> = format::Depth32Float,
 > {
     pub label: Option<String>,
-    pub color_attachments: Vec<ColorAttachment<'a, C>>,
-    pub depth_attachment: Option<DepthAttachment<'a, D>>,
-}
-
-impl<'a, C: TextureFormat, D: TextureFormat> RenderPassDescriptor<'a, C, D> {
-    pub fn default_settings(texture: TextureView<'a, C>) -> Self {
-        Self {
-            label: Some("Render Pass".into()),
-            color_attachments: vec![ColorAttachment::<'a, C> {
-                texture,
-                resolve_target: None,
-                ops: Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                    store: true,
-                },
-            }],
-            depth_attachment: None,
-        }
-    }
+    pub color_attachments: T::State,
+    pub depth_attachment: D::State,
 }
 
 #[derive(Debug)]
@@ -83,15 +137,25 @@ pub(crate) enum Command {
     },
 }
 
-pub struct RenderPass<'a, 'b, 'c, C: TextureFormat, D: TextureFormat> {
+pub struct RenderPass<
+    'a,
+    'b,
+    'c,
+    T: ToColorAttachment<'c> + ColorTargetState,
+    D: ToDepthAttachment<'c> + DepthStencilState,
+> {
     pub(crate) commands: Vec<Command>,
-    pub(crate) pipeline: &'a RenderPipeline<C, D>,
-    pub(crate) descriptor: &'a RenderPassDescriptor<'c, C, D>,
+    pub(crate) pipeline: &'a RenderPipeline<T, D>,
+    pub(crate) descriptor: &'a RenderPassDescriptor<'c, T, D>,
     pub(crate) ctx: &'a mut RenderCtx<'b>,
 }
 
-impl<'a, 'b, 'c, C: TextureFormat, D: TextureFormat> RenderPass<'a, 'b, 'c, C, D> {
-    pub fn set_pipeline(&mut self, pipeline: &'a RenderPipeline<C, D>) -> &mut Self {
+impl<'a, 'b, 'c, T, D> RenderPass<'a, 'b, 'c, T, D>
+where
+    T: ToColorAttachment<'c> + ColorTargetState,
+    D: ToDepthAttachment<'c> + DepthStencilState,
+{
+    pub fn set_pipeline(&mut self, pipeline: &'a RenderPipeline<T, D>) -> &mut Self {
         self.commands.push(Command::SetPipeline {
             pipeline: pipeline.pipeline.clone(),
         });
@@ -168,26 +232,12 @@ impl<'a, 'b, 'c, C: TextureFormat, D: TextureFormat> RenderPass<'a, 'b, 'c, C, D
     }
 }
 
-pub(crate) fn execute_commands<C: TextureFormat, D: TextureFormat>(
-    descriptor: &RenderPassDescriptor<C, D>,
+pub(crate) fn execute_commands<'a, T: ToColorAttachment<'a>, D: ToDepthAttachment<'a>>(
+    descriptor: &RenderPassDescriptor<'a, T, D>,
     commands: &Vec<Command>,
     ctx: &mut RenderCtx,
 ) {
-    let color_attachments = descriptor
-        .color_attachments
-        .iter()
-        .map(|attachment| {
-            if let Some(download) = &attachment.texture.download {
-                download.store(true, std::sync::atomic::Ordering::SeqCst);
-            }
-
-            wgpu::RenderPassColorAttachment {
-                view: &attachment.texture.view(),
-                resolve_target: attachment.resolve_target.as_ref().map(|t| &*t.view()),
-                ops: attachment.ops.clone(),
-            }
-        })
-        .collect::<Vec<_>>();
+    let color_attachments = T::to_color_attachment(&descriptor.color_attachments);
 
     let label = match &descriptor.label {
         Some(l) => Some(l.as_str()),
@@ -197,20 +247,7 @@ pub(crate) fn execute_commands<C: TextureFormat, D: TextureFormat>(
     let descriptor = wgpu::RenderPassDescriptor {
         label,
         color_attachments: &color_attachments,
-        depth_stencil_attachment: descriptor
-            .depth_attachment
-            .as_ref()
-            .map(|depth_attachment| {
-                if let Some(download) = &depth_attachment.texture.download {
-                    download.store(true, std::sync::atomic::Ordering::SeqCst);
-                }
-
-                wgpu::RenderPassDepthStencilAttachment {
-                    view: &depth_attachment.texture.view(),
-                    depth_ops: depth_attachment.depth_ops.clone(),
-                    stencil_ops: depth_attachment.stencil_ops.clone(),
-                }
-            }),
+        depth_stencil_attachment: D::to_depth_attachment(&descriptor.depth_attachment),
     };
 
     let mut render_pass = ctx.encoder.as_mut().unwrap().begin_render_pass(&descriptor);
@@ -246,7 +283,11 @@ pub(crate) fn execute_commands<C: TextureFormat, D: TextureFormat>(
     }
 }
 
-impl<C: TextureFormat, D: TextureFormat> Drop for RenderPass<'_, '_, '_, C, D> {
+impl<'a, T, D> Drop for RenderPass<'_, '_, 'a, T, D>
+where
+    T: ToColorAttachment<'a> + ColorTargetState,
+    D: ToDepthAttachment<'a> + DepthStencilState,
+{
     fn drop(&mut self) {
         execute_commands(self.descriptor, &self.commands, self.ctx);
     }
@@ -352,7 +393,7 @@ impl<'rp, C: TextureFormat, D: TextureFormat> PipelineRenderPass<'_, 'rp, '_, '_
             base_vertex: 0,
             instances: 0..1,
         });
- 
+
         self
     }
 }
