@@ -176,16 +176,13 @@ pub struct PipelineDescriptor<T: ColorTargetState, D: DepthStencilState> {
 impl<T: ColorTargetState, D: DepthStencilState> PipelineDescriptor<T, D> {
     pub fn default_settings(
         shader: Shader,
-        depth_stencil: impl Into<wgpu::DepthStencilState>,
-    ) -> Self
-    where
-        T::State: Default,
-        D::State: Default,
-    {
+        targets: T::State,
+        depth_stencil: D::State,
+    ) -> Self {
         Self {
             shader,
-            targets: Default::default(),
-            depth_stencil: Default::default(),
+            targets,
+            depth_stencil,
             primitive: PrimitiveState {
                 topology: PrimitiveTopology::TriangleList,
                 strip_index_format: None,
