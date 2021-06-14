@@ -80,6 +80,19 @@ pub struct ColorAttachment<'a, F: TextureFormat> {
     pub ops: Operations<wgpu::Color>,
 }
 
+impl<'a, F: TextureFormat> ColorAttachment<'a, F> {
+    pub fn default_settings(texture: TextureView<'a, F>) -> Self {
+        Self {
+            texture,
+            resolve_target: None,
+            ops: Operations {
+                load: LoadOp::Clear(wgpu::Color::BLACK),
+                store: true,
+            },
+        }
+    }
+}
+
 pub struct DepthAttachment<'a, F: TextureFormat> {
     pub texture: TextureView<'a, F>,
     pub depth_ops: Option<Operations<f32>>,
